@@ -89,7 +89,7 @@ C4Container
 - Новий апаратний компонент (drive, encoders, …) → `components/<name>/` як `<name>_core.c` + `<name>_hal.c` + `include/`, піни з `board_pins.h`; справжнього прецеденту ще немає, найближчі — драйвери з bring-up: `tools/bringup/main/main.c:42` (I²C) і `:139` (ADC).
 - Нове діагностичне вимірювання → функція `test_pN_*` із гілкою `BRINGUP_TEST` у `tools/bringup/main/main.c:17,185-191`, результат у `docs/measured.md`.
 - Нова частина машини станів → чиста логіка поряд з `main/app_states.c`, стани за `docs/02-FIRMWARE-CONTEXT.md` §6.3.
-- Нова фаза прошивки → одна SDD-фіча з власним слагом і специфікацією в `docs/specs/` (`CLAUDE.md`, «Порядок роботи»).
+- Нова фаза прошивки → одна SDD-фіча з власним слагом і специфікацією в `docs/features/<slug>/spec.md` (`CLAUDE.md`, «Порядок роботи»).
 
 ## Constraints & known tech-debt
 

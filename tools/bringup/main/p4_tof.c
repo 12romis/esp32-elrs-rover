@@ -14,8 +14,8 @@
 #include "board_pins.h"
 #include "bringup.h"
 
-#define P4_MODE             0
-#define P4_SINGLE_BIT       IOEXP_BIT_XSHUT_U7   // U7=bit0, U8=bit1, U9=bit2, U10=bit4
+#define P4_MODE             1
+#define P4_SINGLE_BIT       IOEXP_BIT_XSHUT_U8   // U7=bit0, U8=bit1, U9=bit2, U10=bit4
 #define P4_REPEAT           10
 
 #define VL_DEFAULT_ADDR     0x29

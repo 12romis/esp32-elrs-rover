@@ -1,0 +1,25 @@
+---
+status: Living
+updated_at: "2026-10-16"
+---
+
+# Domain Context — ESP32-ELRS-Rover
+
+<!--
+CONTEXT.md is the domain glossary — not a spec and not a scratch pad. NO implementation
+detail here (no datastore/broker/framework names, no API contracts) — only domain words
+and the boundaries between them. Implementation choices live in the SAD and ADRs; behaviour
+lives in spec.md.
+
+Terms get fixed inline, the moment they surface in an interview / spec / review — never
+batched «I'll consolidate later». Empty H2 → prune before commit; keep only the sections
+that carry real content. ## Glossary is mandatory; the other two are optional.
+-->
+
+## Glossary
+
+- Автомат станів — набір станів ровера (BOOT, SELFTEST, DISARMED, ARMED, OBSTACLE_HOLD, FAILSAFE, FAULT) і таблиця дозволених переходів між ними. NOT довільний прапорець «увімкнено/вимкнено»: перехід, якого немає в таблиці, неможливий.
+- Агент — програмний помічник, який у цьому проєкті збирає прошивку і запускає хостові тести. NOT Розробник: Агент не прошиває плату, не фіксує зміни в історії без прямої вказівки і не змінює захищені файли без явної згоди.
+- Консоль — текстовий канал «Розробник ↔ плата» через USB, у якому Розробник вводить службові команди і бачить журнал та відповіді. NOT пульт керування ровером: пульт (ELRS) з'являється лише у фазі 3.
+- Захищені файли — канонічні файли проєкту, що не змінюються без явної згоди Розробника: кореневий файл збірки, каталог налаштувань редактора, файл типових налаштувань збірки; окремо — каталог проєкту плати, який Агент не редагує взагалі. NOT будь-який файл конфігурації: від цих залежать підказки редактора і налаштування пам'яті плати.
+- Розробник — власник проєкту, який прошиває плату через редактор, читає консоль і заносить результати приймання в журнал bring-up. NOT Агент: лише Розробник вирішує, що прошивається і фіксується.
