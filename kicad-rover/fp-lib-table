@@ -1,0 +1,5 @@
+(fp_lib_table
+	(version 7)
+	(lib (name "YD-ESP32-S3-main") (type "KiCad") (uri "${KIPRJMOD}/YD-ESP32-S3-main") (options "") (descr ""))
+	(lib (name "rover_footprints") (type "KiCad") (uri "${KIPRJMOD}/rover_footprints.pretty") (options "") (descr ""))
+)

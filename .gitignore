@@ -1,0 +1,93 @@
+# ───────── KiCad ─────────
+# Резервні копії та автозбереження
+*-backups/
+_autosave-*
+*.bak
+*.kicad_pcb-bak
+*.sch-bak
+*.kicad_sch-bak
+*.kicad_pro.bak
+# Локальний стан вікна/видимості шарів
+*.kicad_prl
+*-save.pro
+*-save.kicad_pcb
+*-save.kicad_sch
+*.lck
+~*.lck
+fp-info-cache
+*-cache.lib
+*-cache.dcm
+*-rescue.lib
+*-rescue.dcm
+*-rescue.kicad_sym
+
+# Локальна історія KiCad (окремий вкладений git-репозиторій)
+kicad-rover/.history/
+
+# Архіви та експорти, що перегенеровуються
+*.tar.gz
+*.zip
+*.pos
+*.rpt
+*.drc
+*.erc
+fp-lib-table.bak
+sym-lib-table.bak
+# Вкладений сторонній репозиторій із бібліотекою плати YD-ESP32-S3
+# (розкоментуй, якщо не хочеш зберігати копію в проєкті):
+# kicad-rover/YD-ESP32-S3-main/
+
+# ───────── ESP-IDF / прошивка ─────────
+build/
+build_*/
+sdkconfig
+sdkconfig.old
+managed_components/
+.cache/
+compile_commands.json
+*.pyc
+__pycache__/
+.pio/
+# dependencies.lock — комітити (фіксує версії компонентів)
+
+# Хостові тести (звичайний gcc)
+test/host/build/
+test/host/*.o
+test/host/*.out
+test/host/test_runner
+
+# Діагностичні прошивки tools/bringup/pNN_*
+tools/bringup/**/build/
+tools/bringup/**/sdkconfig
+tools/bringup/**/sdkconfig.old
+tools/bringup/**/managed_components/
+
+# Журнали та дампи з плати
+*.log
+*.bin
+*.elf
+*.map
+*.hex
+*.dump
+logs/
+
+# ───────── Секрети ─────────
+.env
+.env.*
+*.pem
+*.key
+secrets*.h
+secrets*.json
+
+# ───────── Редактори та ОС ─────────
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+~$*
+.~lock.*#
