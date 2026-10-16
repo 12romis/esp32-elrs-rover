@@ -91,3 +91,7 @@ secrets*.json
 Thumbs.db
 ~$*
 .~lock.*#
+
+# ───────── SDD ─────────
+.claude/*.local.md
+.worktrees/
