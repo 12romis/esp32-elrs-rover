@@ -42,6 +42,7 @@
 #define PIN_J8_GPIO44    44
 
 // Біти PCF8574 (U6)
+#define PCF8574_ADDR           0x20   // виміряно P1: 2026-10-16 (docs/measured.md)
 #define IOEXP_BIT_XSHUT_U7     0
 #define IOEXP_BIT_XSHUT_U8     1
 #define IOEXP_BIT_XSHUT_U9     2
