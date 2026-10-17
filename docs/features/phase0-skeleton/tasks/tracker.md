@@ -11,7 +11,7 @@
 | T1 | Створити хостовий раннер і скрипти перевірок test/host | tests | Агент | M | — | done | COMMIT |
 | T2 | Створити компонент app_state: таблиця переходів, запит переходу, історія (core) | domain | Агент | M | T1 | done | COMMIT |
 | T3 | Створити console_core: збирання рядка, розбір команд, права за станом | app | Агент | M | T1, T2 | todo | — |
-| T4 | Створити storage_core і watchdog_core: політика сховища та політика годування | domain | Агент | S | T1 | todo | — |
+| T4 | Створити storage_core і watchdog_core: політика сховища та політика годування | domain | Агент | S | T1 | done | COMMIT |
 | T5 | Створити app_state_hal і storage_hal: мʼютекс, журнал переходів, ініціалізація NVS | infra | Агент | M | T2, T4 | todo | — |
 | T6 | Створити watchdog_hal: програмний panic для TWDT, задача heartbeat, причина скидання | infra | Агент | S | T4 | todo | — |
 | T7 | Створити console_hal: ввід-вивід USB, задача console, виконання команд | ports | Агент | M | T3, T5 | todo | — |

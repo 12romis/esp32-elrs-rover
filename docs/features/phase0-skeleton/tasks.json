@@ -78,7 +78,7 @@
         "test/host/test_watchdog.c"
       ],
       "file": "docs/features/phase0-skeleton/tasks/t4-storage-watchdog-core.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T5",
