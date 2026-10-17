@@ -115,7 +115,7 @@
         "components/watchdog/"
       ],
       "file": "docs/features/phase0-skeleton/tasks/t6-watchdog-hal.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T7",
