@@ -18,6 +18,12 @@ console_event_t console_feed(console_t *c, char ch)
         c->line_ready = false;
     }
 
+    bool after_cr = c->last_was_cr;
+    c->last_was_cr = (ch == '\r');
+    if (ch == '\n' && after_cr) {  // другий символ пари CR LF
+        return CONSOLE_EVENT_NONE;
+    }
+
     if (ch == '\r' || ch == '\n') {
         c->line_ready = true;
         if (c->overflowed) {

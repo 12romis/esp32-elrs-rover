@@ -96,7 +96,7 @@ C4Context
 **Журнал припущень design (рівень easy; на вето Розробника):**
 
 - `target_surfaces: [cli]` — вбудованої прошивки в таксономії немає, єдиний зовнішній інтерфейс — консоль.
-- Назви компонентів `app_state`, `console`, `watchdog`, `storage`; ідентифікатори `app_state_t`/`APP_STATE_*` не перейменовуються.
+- Назви компонентів `app_state`, `rover_console` (не `console`: це компонент ESP-IDF), `watchdog`, `storage`; ідентифікатори `app_state_t`/`APP_STATE_*` не перейменовуються.
 - Задачі: `console` (core 0, пріоритет 1, блокується на вводі) і `heartbeat` (core 0, 1000 мс через `vTaskDelayUntil`); `wdt-test` піднімає прапорець, політика `watchdog_core` перестає годувати, heartbeat зупиняє себе.
 - Максимальна довжина рядка консолі — 64 символи; довший рядок відкидається повністю (закриває spec OQ-7).
 - Історія переходів — кільце на 16 записів; core не блокується, мʼютекс `m_state` лише в `app_state_hal`.
@@ -106,7 +106,7 @@ C4Context
 
 ## 5. Building block view
 
-Стиль — шари «чиста логіка → тонкий HAL → `app_main`»: залежності йдуть від `main` до компонентів, між компонентами лише від `console` до `app_state`. Дії, потрібні консолі від інших модулів (сховище, сторожовий таймер), передає `main` структурою колбеків — консоль не залежить від `watchdog` і `storage`.
+Стиль — шари «чиста логіка → тонкий HAL → `app_main`»: залежності йдуть від `main` до компонентів, між компонентами лише від `rover_console` до `app_state`. Дії, потрібні консолі від інших модулів (сховище, сторожовий таймер), передає `main` структурою колбеків — консоль не залежить від `watchdog` і `storage`.
 
 **Internal decomposition:**
 
@@ -122,7 +122,7 @@ components/
 ├── rover_console/         консоль через USB (імʼя rover_console, бо `console` — компонент ESP-IDF)
 │   ├── console_core.c     збирання рядка (ліміт 64), розбір, права команд за станом
 │   ├── console_hal.c      задача console (core 0, пріоритет 1), читання/запис USB, виконання команд
-│   └── include/console.h
+│   └── include/console_core.h, console.h
 ├── watchdog/              сторожовий таймер
 │   ├── watchdog_core.c    політика годування: годувати, доки не запитано зависання (`wdt-test`)
 │   ├── watchdog_hal.c     esp_task_wdt_reconfigure(panic), задача heartbeat (1000 мс, vTaskDelayUntil), причина скидання
@@ -147,7 +147,7 @@ C4Container
     Container_Boundary(fw, "Прошивка фази 0") {
         Container(main, "main", "C, app_main", "Ініціалізує модулі й стартує задачі")
         Container(appstate, "app_state", "C, core плюс HAL", "Автомат станів, таблиця переходів, історія")
-        Container(console, "console", "C, core плюс HAL", "Консоль команд через USB, права за станом")
+        Container(console, "rover_console", "C, core плюс HAL", "Консоль команд через USB, права за станом")
         Container(watchdog, "watchdog", "C, core плюс HAL", "Task WDT з panic, задача heartbeat")
         Container(storage, "storage", "C, core плюс HAL", "Ініціалізація й очищення сховища")
         ContainerDb(nvs, "NVS", "ESP-IDF nvs_flash", "Сховище налаштувань, у фазі 0 без даних")

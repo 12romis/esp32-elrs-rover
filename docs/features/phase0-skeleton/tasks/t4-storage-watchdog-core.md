@@ -85,7 +85,7 @@ Internal — no API surface.
 ## Checklist
 
 - [ ] `components/storage/CMakeLists.txt` + `include/storage.h`: `storage_result_t {OK, NO_FREE_PAGES, NEW_VERSION, OTHER}`, `storage_action_t {USE, ERASE_AND_RETRY, FAIL}`, `storage_status_t {OK, WIPED, UNAVAILABLE}` і функції рішення
-- [ ] `components/storage/storage_core.c`: `storage_decide(result)`, `storage_after_retry(result)`, `storage_status_text(status)`
+- [ ] `components/storage/storage_core.c`: `storage_decide(result)`, `storage_final_status(first, retry)`, `storage_status_text(status)`
 - [ ] `components/watchdog/CMakeLists.txt` + `include/watchdog.h`: `watchdog_core_t`, `watchdog_should_feed(core)`, `watchdog_core_request_hang(core)`
 - [ ] `components/watchdog/watchdog_core.c`: прапорець зависання; після запиту `watchdog_should_feed` = false
 - [ ] `test/host/test_storage.c`, `test/host/test_watchdog.c`: усі комбінації результатів; запит зависання змінює рішення; повторний запит ідемпотентний

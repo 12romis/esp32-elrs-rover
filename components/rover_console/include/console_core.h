@@ -20,6 +20,7 @@ typedef struct {
     size_t len;
     bool overflowed;   // рядок вже перевищив ліміт: решту до кінця рядка відкидаємо
     bool line_ready;   // після LINE/OVERFLOW: наступний символ починає новий рядок
+    bool last_was_cr;  // попередній символ — CR: наступний LF (CR LF від монітора) ігнорується
 } console_t;
 
 typedef enum {
@@ -35,7 +36,7 @@ typedef enum {
 
 void console_init(console_t *c);
 
-// Подає один байт вводу. CR або LF завершують рядок; BS (0x08) і DEL (0x7F) стирають символ;
+// Подає один байт вводу. CR або LF завершують рядок (LF одразу після CR ігнорується — монітор шле CR LF); BS (0x08) і DEL (0x7F) стирають символ;
 // керівні символи ігноруються. Після LINE рядок доступний через console_line() до наступного виклику.
 console_event_t console_feed(console_t *c, char ch);
 const char *console_line(const console_t *c);

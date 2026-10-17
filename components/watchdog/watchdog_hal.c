@@ -36,12 +36,6 @@ static uint32_t idle_core_mask(void)
 static void heartbeat_task(void *arg)
 {
     (void)arg;
-    esp_err_t err = esp_task_wdt_add(NULL);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "heartbeat не підписано на Task WDT: %s", esp_err_to_name(err));
-        vTaskDelete(NULL);
-        return;
-    }
     TickType_t last = xTaskGetTickCount();
     for (;;) {
         if (watchdog_should_feed(&s_core)) {
@@ -73,10 +67,18 @@ esp_err_t watchdog_start(void)
         return err;
     }
 
+    TaskHandle_t hb = NULL;
     if (xTaskCreatePinnedToCore(heartbeat_task, "heartbeat", HEARTBEAT_STACK, NULL,
-                                HEARTBEAT_PRIORITY, NULL, HEARTBEAT_CORE) != pdPASS) {
+                                HEARTBEAT_PRIORITY, &hb, HEARTBEAT_CORE) != pdPASS) {
         ESP_LOGE(TAG, "не вдалося створити задачу heartbeat");
         return ESP_ERR_NO_MEM;
+    }
+    // Підписка тут, а не в задачі: збій має дійти до main (інакше wdt-test обіцяв би неіснуюче перезавантаження).
+    err = esp_task_wdt_add(hb);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "heartbeat не підписано на Task WDT: %s", esp_err_to_name(err));
+        vTaskDelete(hb);
+        return err;
     }
     s_started = true;
     ESP_LOGI(TAG, "Task WDT: %d с, panic увімкнено, heartbeat запущено", CONFIG_ESP_TASK_WDT_TIMEOUT_S);

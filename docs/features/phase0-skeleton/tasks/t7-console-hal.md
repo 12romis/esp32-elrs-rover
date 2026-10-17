@@ -102,7 +102,7 @@ No DB changes.
 
 ## Checklist
 
-- [ ] `components/rover_console/include/console.h`: `console_ops_t {storage_status, request_hang, reset_reason, reboot}` і `console_start(ops)`
+- [ ] `components/rover_console/include/console.h`: `console_ops_t {storage_status(buf,n), request_hang, reset_reason, reboot}` і `console_start(ops)`
 - [ ] `components/rover_console/console_hal.c`: читання байтів USB-Serial-JTAG, ехо, подача в `console_feed`; на LINE — `console_parse` з поточним станом; на OVERFLOW — повідомлення
 - [ ] Виконання: `help` (текст core), `status` (поля з AC-02), `reboot` (дозволений у DISARMED і BOOT: попередження, `fflush`, `esp_restart`), `wdt-test` (попередження, `ops->request_hang`)
 - [ ] Оновити `components/rover_console/CMakeLists.txt`: `console_hal.c`, `REQUIRES app_state esp_driver_usb_serial_jtag esp_timer esp_system`

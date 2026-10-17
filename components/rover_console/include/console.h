@@ -1,11 +1,13 @@
 // HAL консолі: задача console, ввід-вивід через USB-Serial-JTAG, виконання команд.
 #pragma once
 
+#include <stddef.h>
+
 #include "esp_err.h"
 
 // Дії від інших модулів передає main — консоль не залежить від watchdog і storage (ADR-0002).
 typedef struct {
-    const char *(*storage_status)(void);  // текст стану сховища (з причиною, якщо недоступне)
+    void (*storage_status)(char *buf, size_t n);  // текст стану сховища у буфер виклику (з причиною, якщо недоступне)
     void (*request_hang)(void);           // запит навмисного зависання (wdt-test)
     const char *(*reset_reason)(void);    // коротка назва причини останнього скидання
     void (*reboot)(void);                 // перезавантаження; NULL → esp_restart()

@@ -33,17 +33,25 @@ mkdir -p "$TMP/pbad/components/foo" "$TMP/pbad/components/board/include" "$TMP/p
 printf 'gpio_set_level(21, 1);\n' >"$TMP/pbad/components/foo/foo_hal.c"
 printf '#define PIN_STBY 21\n' >"$TMP/pbad/components/board/include/board_pins.h"
 printf 'gpio_set_level(PIN_STBY, 1);\n' >"$TMP/pgood/components/foo/foo_hal.c"
+for bad in 'gpio_set_level((gpio_num_t)21, 1);' '#define MY_PIN 21' '.pin_bit_mask = 1ULL << 21,'; do
+    mkdir -p "$TMP/pbad2/components/foo" "$TMP/pbad2/components/board/include"
+    printf '%s\n' "$bad" >"$TMP/pbad2/components/foo/foo_hal.c"
+    expect "check_pins ловить: $bad" nz "$HERE/check_pins.sh" "$TMP/pbad2"
+done
 printf '#define PIN_STBY 21\n' >"$TMP/pgood/components/board/include/board_pins.h"
 expect "check_pins ловить літерал піна" nz "$HERE/check_pins.sh" "$TMP/pbad"
 expect "check_pins мовчить, коли піни лише в board_pins.h" 0 "$HERE/check_pins.sh" "$TMP/pgood"
 
 # --- check_protected.sh
-git init -q "$TMP/repo"
+git init -q -b main "$TMP/repo"
 ( cd "$TMP/repo" && git config user.email t@t && git config user.name t \
   && echo a >sdkconfig.defaults && echo b >other.txt && git add -A && git commit -qm init )
 expect "check_protected мовчить на чистому дереві" 0 "$HERE/check_protected.sh" "$TMP/repo"
 echo changed >>"$TMP/repo/sdkconfig.defaults"
 expect "check_protected ловить зміну sdkconfig.defaults" nz "$HERE/check_protected.sh" "$TMP/repo"
+( cd "$TMP/repo" && git checkout -q -- . && git checkout -q -b feat && echo more >>sdkconfig.defaults && git commit -qam "змінено захищений" )
+expect "check_protected ловить закомічену зміну відносно main" nz "$HERE/check_protected.sh" "$TMP/repo"
+expect "ALLOW_PROTECTED=1 дозволяє" 0 env ALLOW_PROTECTED=1 "$HERE/check_protected.sh" "$TMP/repo"
 
 [ $fail -eq 0 ] && echo "selftest_tools: усе гаразд" || echo "selftest_tools: ЄСТЬ ПОМИЛКИ"
 exit $fail

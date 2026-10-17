@@ -5,6 +5,7 @@
 #include "console.h"
 #include "console_core.h"
 #include "driver/usb_serial_jtag.h"
+#include "driver/usb_serial_jtag_vfs.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -15,6 +16,7 @@
 #define CONSOLE_STACK 4096
 #define CONSOLE_PRIORITY 1
 #define CONSOLE_CORE 0
+#define REBOOT_FLUSH_MS 200   // скільки чекати спорожнення USB-буфера перед рестартом
 
 static const char *TAG = "console";
 
@@ -33,7 +35,11 @@ static void do_status(void)
     printf("час роботи: %llu с\r\n", (unsigned long long)up_s);
     printf("вільна внутрішня памʼять: %u байт\r\n", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     printf("причина останнього скидання: %s\r\n", s_ops->reset_reason ? s_ops->reset_reason() : "?");
-    printf("сховище: %s\r\n", s_ops->storage_status ? s_ops->storage_status() : "?");
+    char storage[80] = "?";
+    if (s_ops->storage_status) {
+        s_ops->storage_status(storage, sizeof(storage));
+    }
+    printf("сховище: %s\r\n", storage);
 
     app_sm_entry_t hist[APP_SM_HISTORY_MAX];
     size_t n = app_state_history(hist, APP_SM_HISTORY_MAX);
@@ -68,6 +74,7 @@ static void execute(const char *line)
         break;
     case CONSOLE_CMD_REBOOT:
         say("Перезавантаження плати...");
+        usb_serial_jtag_wait_tx_done(pdMS_TO_TICKS(REBOOT_FLUSH_MS));  // щоб повідомлення встигло вийти
         if (s_ops->reboot) {
             s_ops->reboot();
         } else {
@@ -125,6 +132,8 @@ esp_err_t console_start(const console_ops_t *ops)
         ESP_LOGE(TAG, "usb_serial_jtag_driver_install: %s", esp_err_to_name(err));
         return err;
     }
+    // Вивід (printf, ESP_LOG) теж через драйвер, як у еталонному REPL ESP-IDF.
+    usb_serial_jtag_vfs_use_driver();
     if (xTaskCreatePinnedToCore(console_task, "console", CONSOLE_STACK, NULL, CONSOLE_PRIORITY, NULL,
                                 CONSOLE_CORE) != pdPASS) {
         ESP_LOGE(TAG, "не вдалося створити задачу console");

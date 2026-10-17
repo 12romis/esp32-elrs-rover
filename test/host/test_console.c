@@ -22,11 +22,19 @@ static void test_line_assembly(void)
     CHECK(console_feed(&c, 's') == CONSOLE_EVENT_NONE);
     CHECK(feed_str(&c, "tatus", '\n') == CONSOLE_EVENT_LINE);
     CHECK(strcmp(console_line(&c), "status") == 0);
-    // CR теж завершує; наступний LF дає порожній рядок
+    // CR теж завершує; LF одразу після CR (CR LF від монітора) ігнорується
     CHECK(feed_str(&c, "help", '\r') == CONSOLE_EVENT_LINE);
     CHECK(strcmp(console_line(&c), "help") == 0);
+    CHECK(console_feed(&c, '\n') == CONSOLE_EVENT_NONE);
+    // LF сам по собі і два CR підряд — окремі (порожні) рядки
     CHECK(console_feed(&c, '\n') == CONSOLE_EVENT_LINE);
-    CHECK(strcmp(console_line(&c), "") == 0);
+    CHECK(console_feed(&c, '\r') == CONSOLE_EVENT_LINE);
+    CHECK(console_feed(&c, '\r') == CONSOLE_EVENT_LINE);
+    // CR LF після рядка й наступна команда збирається чисто
+    CHECK(feed_str(&c, "status", '\r') == CONSOLE_EVENT_LINE);
+    CHECK(console_feed(&c, '\n') == CONSOLE_EVENT_NONE);
+    CHECK(feed_str(&c, "help", '\r') == CONSOLE_EVENT_LINE);
+    CHECK(strcmp(console_line(&c), "help") == 0);
 }
 
 static void test_backspace(void)
