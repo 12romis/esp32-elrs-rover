@@ -16,6 +16,6 @@
 | T6 | Створити watchdog_hal: програмний panic для TWDT, задача heartbeat, причина скидання | infra | Агент | S | T4 | done | COMMIT |
 | T7 | Створити console_hal: ввід-вивід USB, задача console, виконання команд | ports | Агент | M | T3, T5 | done | COMMIT |
 | T8 | Скласти main.c: послідовність старту, REQUIRES, видалення main/app_states | wiring | Агент | S | T5, T6, T7 | done | COMMIT |
-| T9 | Підготувати чек-лист приймання фази 0 на залізі для журналу bring-up | docs | Агент | S | T8 | todo | — |
+| T9 | Підготувати чек-лист приймання фази 0 на залізі для журналу bring-up | docs | Агент | S | T8 | done | COMMIT |
 
 **Total:** 9 tasks, ~7.0 person-days.
