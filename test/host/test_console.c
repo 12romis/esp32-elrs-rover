@@ -142,6 +142,18 @@ static void test_permissions_reboot(void)
     }
 }
 
+static void test_identify(void)
+{
+    CHECK(console_identify("") == CONSOLE_CMD_EMPTY);
+    CHECK(console_identify("  ") == CONSOLE_CMD_EMPTY);
+    CHECK(console_identify("foo") == CONSOLE_CMD_UNKNOWN);
+    CHECK(console_identify("HELP") == CONSOLE_CMD_UNKNOWN);
+    CHECK(console_identify("reboot") == CONSOLE_CMD_REBOOT);
+    CHECK(console_identify("  wdt-test ") == CONSOLE_CMD_WDT_TEST);
+    CHECK(console_identify("reboot now") == CONSOLE_CMD_REBOOT);  // аргументи не враховуються
+    CHECK(console_identify("status") == CONSOLE_CMD_STATUS);
+}
+
 static void test_messages(void)
 {
     CHECK(strstr(console_help_text(), "help") != NULL);
@@ -169,6 +181,7 @@ int main(void)
     test_parse_extra_args();
     test_permissions_wdt_test();
     test_permissions_reboot();
+    test_identify();
     test_messages();
     return test_summary();
 }

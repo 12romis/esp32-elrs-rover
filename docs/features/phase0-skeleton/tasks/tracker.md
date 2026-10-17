@@ -14,7 +14,7 @@
 | T4 | Створити storage_core і watchdog_core: політика сховища та політика годування | domain | Агент | S | T1 | done | COMMIT |
 | T5 | Створити app_state_hal і storage_hal: мʼютекс, журнал переходів, ініціалізація NVS | infra | Агент | M | T2, T4 | done | COMMIT |
 | T6 | Створити watchdog_hal: програмний panic для TWDT, задача heartbeat, причина скидання | infra | Агент | S | T4 | done | COMMIT |
-| T7 | Створити console_hal: ввід-вивід USB, задача console, виконання команд | ports | Агент | M | T3, T5 | todo | — |
+| T7 | Створити console_hal: ввід-вивід USB, задача console, виконання команд | ports | Агент | M | T3, T5 | done | COMMIT |
 | T8 | Скласти main.c: послідовність старту, REQUIRES, видалення main/app_states | wiring | Агент | S | T5, T6, T7 | todo | — |
 | T9 | Підготувати чек-лист приймання фази 0 на залізі для журналу bring-up | docs | Агент | S | T8 | todo | — |
 

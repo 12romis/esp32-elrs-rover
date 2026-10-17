@@ -43,6 +43,10 @@ const char *console_line(const console_t *c);
 // Розбір рядка. Невідома команда має пріоритет над аргументами; зайві аргументи — над правами за станом.
 console_cmd_t console_parse(const char *line, app_state_t state);
 
+// Яку команду названо в рядку, без урахування аргументів і прав за станом
+// (потрібно HAL, щоб пояснити відмову DENIED_STATE). Невідома — UNKNOWN, порожній — EMPTY.
+console_cmd_t console_identify(const char *line);
+
 // Тексти відповідей (українською).
 const char *console_help_text(void);
 const char *console_msg_unknown(void);

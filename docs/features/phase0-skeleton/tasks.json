@@ -135,7 +135,7 @@
         "components/rover_console/"
       ],
       "file": "docs/features/phase0-skeleton/tasks/t7-console-hal.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T8",

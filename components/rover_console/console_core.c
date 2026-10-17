@@ -59,31 +59,42 @@ static bool is_space(char ch)
     return ch == ' ' || ch == '\t';
 }
 
-console_cmd_t console_parse(const char *line, app_state_t state)
+// Розбирає перше слово: повертає команду, а в *rest — початок решти рядка (після пробілів).
+static console_cmd_t first_word(const char *line, const char **rest)
 {
     const char *p = line;
     while (is_space(*p)) p++;
     if (*p == '\0') {
+        *rest = p;
         return CONSOLE_CMD_EMPTY;
     }
     const char *start = p;
     while (*p != '\0' && !is_space(*p)) p++;
     size_t n = (size_t)(p - start);
     while (is_space(*p)) p++;
-    bool has_args = (*p != '\0');
+    *rest = p;
 
-    console_cmd_t cmd;
-    if (n == 4 && strncmp(start, "help", n) == 0) {
-        cmd = CONSOLE_CMD_HELP;
-    } else if (n == 6 && strncmp(start, "status", n) == 0) {
-        cmd = CONSOLE_CMD_STATUS;
-    } else if (n == 6 && strncmp(start, "reboot", n) == 0) {
-        cmd = CONSOLE_CMD_REBOOT;
-    } else if (n == 8 && strncmp(start, "wdt-test", n) == 0) {
-        cmd = CONSOLE_CMD_WDT_TEST;
-    } else {
-        return CONSOLE_CMD_UNKNOWN;
+    if (n == 4 && strncmp(start, "help", n) == 0) return CONSOLE_CMD_HELP;
+    if (n == 6 && strncmp(start, "status", n) == 0) return CONSOLE_CMD_STATUS;
+    if (n == 6 && strncmp(start, "reboot", n) == 0) return CONSOLE_CMD_REBOOT;
+    if (n == 8 && strncmp(start, "wdt-test", n) == 0) return CONSOLE_CMD_WDT_TEST;
+    return CONSOLE_CMD_UNKNOWN;
+}
+
+console_cmd_t console_identify(const char *line)
+{
+    const char *rest;
+    return first_word(line, &rest);
+}
+
+console_cmd_t console_parse(const char *line, app_state_t state)
+{
+    const char *rest;
+    console_cmd_t cmd = first_word(line, &rest);
+    if (cmd == CONSOLE_CMD_EMPTY || cmd == CONSOLE_CMD_UNKNOWN) {
+        return cmd;
     }
+    bool has_args = (*rest != '\0');
 
     if (has_args) {
         return CONSOLE_CMD_EXTRA_ARGS;
