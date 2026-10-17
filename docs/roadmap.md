@@ -51,7 +51,7 @@ updated_at: "2026-10-16"
 
 | # | Step | Source | Size | Status |
 |---|---|---|:---:|---|
-| 0 | `phase0-skeleton` — прошивається, консоль відповідає, WDT зареєстрований, стан BOOT друкується | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 0 — скелет» | S | building — [spec](features/phase0-skeleton/spec.md) |
+| 0 | `phase0-skeleton` — прошивається, консоль відповідає, WDT зареєстрований, стан BOOT друкується | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 0 — скелет» | S | shipped — [spec](features/phase0-skeleton/spec.md) |
 | 1 | `phase1-drive` — `drive 0.3 0` крутить борти, `disarm` зупиняє, при VBAT < 6.0 В мотори не стартують | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 1 — живлення і мотори» | M | idea |
 | 2 | `phase2-io` — світло й зумер керуються з консолі, при старті світла немає | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 2 — I²C, PCF8574, світло, зумер» | S | idea |
 | 3 | `phase3-crsf` — стіки пульта рухають мотори, вимкнення пульта зупиняє за 500 мс | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 3 — ELRS / CRSF» | M | idea |
@@ -154,4 +154,4 @@ flowchart LR
 
 | Step | Shipped | Link |
 |---|---|---|
-| — | — | — |
+| 0 `phase0-skeleton` | 2026-10-18 | [changelog](features/phase0-skeleton/changelog.md) |
