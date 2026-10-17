@@ -98,7 +98,7 @@
         "components/storage/"
       ],
       "file": "docs/features/phase0-skeleton/tasks/t5-app-state-storage-hal.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T6",
