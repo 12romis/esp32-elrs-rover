@@ -3,7 +3,7 @@
 // Кожна передфаза — окремий файл pN_*.c; тут лише вибір.
 #include "bringup.h"
 
-#define BRINGUP_TEST 5   // 0=chip/psram 1=i2c scan 2=pcf 3=adc
+#define BRINGUP_TEST 6   // 0=chip/psram 1=i2c scan 2=pcf 3=adc
                          // 4=tof 5=crsf 6=encoders 7=motors
 
 void app_main(void)
