@@ -74,7 +74,7 @@ void test_p5_crsf(void)
     uint32_t ok = 0, fail = 0, rc_frames = 0;
     uint8_t last_type = 0;
     uint16_t ch[16] = { 0 };
-    int64_t last_ok_us = 0, last_print_us = 0;
+    int64_t last_ok_us = 0, last_rc_us = 0, last_print_us = 0;
 
     for (;;) {
         uint8_t tmp[64];
@@ -109,6 +109,7 @@ void test_p5_crsf(void)
                 if (buf[2] == CRSF_TYPE_RC && len - 2 == CRSF_RC_PAYLOAD) {
                     unpack_channels(buf + 3, ch);
                     rc_frames++;
+                    last_rc_us = last_ok_us;
                 }
                 memmove(buf, buf + total, n - total);
                 n -= total;
@@ -122,11 +123,12 @@ void test_p5_crsf(void)
         if (now - last_print_us >= 500000) {
             last_print_us = now;
             uint32_t total_frames = ok + fail;
-            ESP_LOGI(TAG, "P5 crc ok=%u fail=%u (%.2f%%) rc=%u lasttype=0x%02X silent=%lld ms",
+            ESP_LOGI(TAG, "P5 crc ok=%u fail=%u (%.2f%%) rc=%u lasttype=0x%02X silent=%lld ms rc_silent=%lld ms",
                      (unsigned)ok, (unsigned)fail,
                      total_frames ? 100.0 * fail / total_frames : 0.0,
                      (unsigned)rc_frames, last_type,
-                     last_ok_us ? (long long)((now - last_ok_us) / 1000) : -1);
+                     last_ok_us ? (long long)((now - last_ok_us) / 1000) : -1,
+                     last_rc_us ? (long long)((now - last_rc_us) / 1000) : -1);
             if (rc_frames) {
                 ESP_LOGI(TAG, "P5 raw  %4u %4u %4u %4u %4u %4u %4u %4u | %4u %4u %4u %4u %4u %4u %4u %4u",
                          ch[0], ch[1], ch[2], ch[3], ch[4], ch[5], ch[6], ch[7],

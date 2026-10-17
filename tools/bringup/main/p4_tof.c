@@ -3,7 +3,10 @@
 //   1) P4_MODE 0: один далекомір (U7), видно 0x29, віддає відстань;
 //   2) додавати решту по одному (міняти P4_SINGLE_BIT);
 //   3) P4_MODE 1: повна послідовність XSHUT з перепризначенням на 0x30…0x33,
-//      10 перезапусків поспіль, далі безперервне вимірювання чотирьох.
+//      10 перезапусків поспіль, далі безперервне вимірювання чотирьох;
+//   4) P4_MODE 2: те саме, але далі раз на секунду статистика по ~30 відліках
+//      на сенсор (mean / min / max / скільки поза діапазоном) — для підбору
+//      TOF_OBSTACLE_MM на зібраному шасі.
 // Ініціалізаційні послідовності регістрів VL53L0X відтворюють відкрите ST/Pololu-ядро
 // (spad info, tuning settings, ref calibration). Не перевірено на залізі.
 #include "driver/i2c_master.h"
@@ -14,7 +17,7 @@
 #include "board_pins.h"
 #include "bringup.h"
 
-#define P4_MODE             1
+#define P4_MODE             2   // 0=один сенсор, 1=повна послідовність, 2=статистика
 #define P4_SINGLE_BIT       IOEXP_BIT_XSHUT_U8   // U7=bit0, U8=bit1, U9=bit2, U10=bit4
 #define P4_REPEAT           10
 
@@ -398,11 +401,39 @@ static __attribute__((unused)) void mode_full(void)
             return;
         }
     }
+#if P4_MODE == 2
+    static const char *const NAMES[4] = { "U7(0x30)", "U8(0x31)", "U9(0x32)", "U10(0x33)" };
+    const int N = 30;
+    for (;;) {
+        long sum[4] = { 0 };
+        int mn[4] = { 99999, 99999, 99999, 99999 }, mx[4] = { 0 }, valid[4] = { 0 };
+        for (int k = 0; k < N; k++) {
+            for (int i = 0; i < 4; i++) {
+                int mm = vl_read_mm(&s[i]);
+                if (mm > 0 && mm < 8190) {
+                    sum[i] += mm;
+                    valid[i]++;
+                    if (mm < mn[i]) mn[i] = mm;
+                    if (mm > mx[i]) mx[i] = mm;
+                }
+            }
+        }
+        for (int i = 0; i < 4; i++) {
+            if (valid[i]) {
+                ESP_LOGI(TAG, "P4 stat %s: mean=%ld min=%d max=%d valid=%d/%d",
+                         NAMES[i], sum[i] / valid[i], mn[i], mx[i], valid[i], N);
+            } else {
+                ESP_LOGI(TAG, "P4 stat %s: поза діапазоном (0/%d)", NAMES[i], N);
+            }
+        }
+    }
+#else
     for (;;) {
         ESP_LOGI(TAG, "P4 U7(0x30)=%d U8(0x31)=%d U9(0x32)=%d U10(0x33)=%d mm",
                  vl_read_mm(&s[0]), vl_read_mm(&s[1]), vl_read_mm(&s[2]), vl_read_mm(&s[3]));
         vTaskDelay(pdMS_TO_TICKS(200));
     }
+#endif
 }
 
 void test_p4_tof(void)
