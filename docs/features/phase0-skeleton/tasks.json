@@ -17,7 +17,7 @@
         "test/host/"
       ],
       "file": "docs/features/phase0-skeleton/tasks/t1-host-test-runner.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T2",

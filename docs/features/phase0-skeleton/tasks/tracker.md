@@ -8,7 +8,7 @@
 
 | # | Task | Layer | Owner | Estimate | Blocked by | Status | Step |
 |---|---|---|---|---|---|---|---|
-| T1 | Створити хостовий раннер і скрипти перевірок test/host | tests | Агент | M | — | todo | — |
+| T1 | Створити хостовий раннер і скрипти перевірок test/host | tests | Агент | M | — | done | COMMIT |
 | T2 | Створити компонент app_state: таблиця переходів, запит переходу, історія (core) | domain | Агент | M | T1 | todo | — |
 | T3 | Створити console_core: збирання рядка, розбір команд, права за станом | app | Агент | M | T1, T2 | todo | — |
 | T4 | Створити storage_core і watchdog_core: політика сховища та політика годування | domain | Агент | S | T1 | todo | — |
