@@ -101,7 +101,7 @@ Internal — no API surface.
 ## Checklist
 
 - [ ] `main/main.c`: `app_main` за послідовністю з sad §6; колбеки для консолі (`storage_status`, `request_hang`, `reset_reason`, `reboot`); при помилці `watchdog_start` чи сховища — журнал причини, автомат лишається в BOOT (за аналогією ADR-0004)
-- [ ] `main/CMakeLists.txt`: `SRCS "main.c"`, `REQUIRES app_state console watchdog storage` (без `board` пінів моторів)
+- [ ] `main/CMakeLists.txt`: `SRCS "main.c"`, `REQUIRES app_state rover_console watchdog storage` (без `board` пінів моторів)
 - [ ] Видалити `main/app_states.c` і `main/app_states.h`
 - [ ] `idf.py build`: 0 помилок, 0 нових попереджень; зафіксувати кількість попереджень до й після (spec §7)
 - [ ] Огляд коду: `grep` по `main/` і `components/{app_state,console,watchdog,storage}` — немає `gpio_config`, `ledc`, `i2c`, `PIN_STBY`

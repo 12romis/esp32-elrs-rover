@@ -5,7 +5,7 @@ layer: "ports"
 deps: ["T3", "T5"]
 blocks: ["T8"]
 acs: ["AC-01", "AC-02", "AC-13"]
-files_hint: ["components/console/"]
+files_hint: ["components/rover_console/"]
 owner: "Агент"
 estimate: "M"
 context_budget: "M"
@@ -20,7 +20,7 @@ step: ""
 ## Place in the sequence
 
 - **Blocked by:** T3 — Створити console_core: збирання рядка, розбір команд, права за станом, T5 — Створити app_state_hal і storage_hal: мʼютекс, журнал переходів, ініціалізація NVS · **Blocks:** T8 — Скласти main.c: послідовність старту, REQUIRES, видалення main/app_states · **Wave:** 4.
-- **Lane:** own lane (components/console/ після T3).
+- **Lane:** own lane (components/rover_console/ після T3).
 
 ## Why (user story)
 
@@ -102,10 +102,10 @@ No DB changes.
 
 ## Checklist
 
-- [ ] `components/console/include/console.h`: `console_ops_t {storage_status, request_hang, reset_reason, reboot}` і `console_start(ops)`
-- [ ] `components/console/console_hal.c`: читання байтів USB-Serial-JTAG, ехо, подача в `console_feed`; на LINE — `console_parse` з поточним станом; на OVERFLOW — повідомлення
+- [ ] `components/rover_console/include/console.h`: `console_ops_t {storage_status, request_hang, reset_reason, reboot}` і `console_start(ops)`
+- [ ] `components/rover_console/console_hal.c`: читання байтів USB-Serial-JTAG, ехо, подача в `console_feed`; на LINE — `console_parse` з поточним станом; на OVERFLOW — повідомлення
 - [ ] Виконання: `help` (текст core), `status` (поля з AC-02), `reboot` (дозволений у DISARMED і BOOT: попередження, `fflush`, `esp_restart`), `wdt-test` (попередження, `ops->request_hang`)
-- [ ] Оновити `components/console/CMakeLists.txt`: `console_hal.c`, `REQUIRES app_state esp_driver_usb_serial_jtag esp_timer esp_system`
+- [ ] Оновити `components/rover_console/CMakeLists.txt`: `console_hal.c`, `REQUIRES app_state esp_driver_usb_serial_jtag esp_timer esp_system`
 - [ ] `idf.py build`: 0 помилок, 0 нових попереджень; без викликів конфігурації GPIO моторів
 
 ## Edge cases

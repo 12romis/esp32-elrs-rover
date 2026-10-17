@@ -5,12 +5,12 @@ layer: "app"
 deps: ["T1", "T2"]
 blocks: ["T7"]
 acs: ["AC-02", "AC-03", "AC-05"]
-files_hint: ["components/console/", "test/host/test_console.c"]
+files_hint: ["components/rover_console/", "test/host/test_console.c"]
 owner: "Агент"
 estimate: "M"
 context_budget: "M"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 <!-- Самодостатня задача: працюй із вкладеного; джерело завжди перемагає (див. підпис кожного уривка). -->
@@ -101,8 +101,8 @@ No DB changes.
 
 ## Checklist
 
-- [ ] `components/console/CMakeLists.txt`: `idf_component_register(SRCS "console_core.c" INCLUDE_DIRS "include" REQUIRES app_state)`
-- [ ] `components/console/include/console_core.h`: `CONSOLE_LINE_MAX 64`, `console_t`, події `{NONE, LINE, OVERFLOW}`, `console_cmd_t {EMPTY, UNKNOWN, EXTRA_ARGS, DENIED_STATE, HELP, STATUS, REBOOT, WDT_TEST}`
+- [ ] `components/rover_console/CMakeLists.txt`: `idf_component_register(SRCS "console_core.c" INCLUDE_DIRS "include" REQUIRES app_state)`
+- [ ] `components/rover_console/include/console_core.h`: `CONSOLE_LINE_MAX 64`, `console_t`, події `{NONE, LINE, OVERFLOW}`, `console_cmd_t {EMPTY, UNKNOWN, EXTRA_ARGS, DENIED_STATE, HELP, STATUS, REBOOT, WDT_TEST}`
 - [ ] `console_core.c`: `console_feed(c, byte)` збирає рядок (CR/LF = кінець, backspace стирає), при перевищенні 64 відкидає рядок до кінця і повертає OVERFLOW
 - [ ] `console_core.c`: `console_parse(line, state)` — токенізація по пробілах, регістр розрізняється, зайві аргументи → EXTRA_ARGS, права за станом → DENIED_STATE
 - [ ] `console_core.c`: тексти відповідей (невідома команда + підказка про `help`, довідка зі списком команд, відмова «лише в DISARMED», переповнення) — українською

@@ -119,7 +119,7 @@ components/
 │   ├── app_state_core.c   enum, імена, таблиця 7x7, запит переходу, кільце історії (16 записів)
 │   ├── app_state_hal.c    мʼютекс m_state, час старту, журнал переходів
 │   └── include/app_state.h
-├── console/               консоль через USB
+├── rover_console/         консоль через USB (імʼя rover_console, бо `console` — компонент ESP-IDF)
 │   ├── console_core.c     збирання рядка (ліміт 64), розбір, права команд за станом
 │   ├── console_hal.c      задача console (core 0, пріоритет 1), читання/запис USB, виконання команд
 │   └── include/console.h

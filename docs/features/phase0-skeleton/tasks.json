@@ -53,11 +53,11 @@
       ],
       "dod": "Хостові тести AC-02, AC-03, AC-05 проходять.",
       "files_hint": [
-        "components/console/",
+        "components/rover_console/",
         "test/host/test_console.c"
       ],
       "file": "docs/features/phase0-skeleton/tasks/t3-console-core.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T4",
@@ -132,7 +132,7 @@
       ],
       "dod": "`idf.py build` без помилок і без нових попереджень.",
       "files_hint": [
-        "components/console/"
+        "components/rover_console/"
       ],
       "file": "docs/features/phase0-skeleton/tasks/t7-console-hal.md",
       "status": "todo"
