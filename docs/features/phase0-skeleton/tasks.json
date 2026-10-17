@@ -157,7 +157,7 @@
         "components/board/include/"
       ],
       "file": "docs/features/phase0-skeleton/tasks/t8-main-wiring.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T9",
