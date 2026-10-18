@@ -36,6 +36,9 @@ static uint32_t idle_core_mask(void)
 static void heartbeat_task(void *arg)
 {
     (void)arg;
+    // Чекаємо, поки watchdog_start() підпише задачу на Task WDT: годувати непідписану задачу
+    // означає хибну помилку "task not found" у журналі.
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     TickType_t last = xTaskGetTickCount();
     for (;;) {
         if (watchdog_should_feed(&s_core)) {
@@ -80,6 +83,7 @@ esp_err_t watchdog_start(void)
         vTaskDelete(hb);
         return err;
     }
+    xTaskNotifyGive(hb);  // тепер heartbeat може годувати
     s_started = true;
     ESP_LOGI(TAG, "Task WDT: %d с, panic увімкнено, heartbeat запущено", CONFIG_ESP_TASK_WDT_TIMEOUT_S);
     return ESP_OK;
