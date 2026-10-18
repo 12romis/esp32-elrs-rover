@@ -43,12 +43,51 @@ static void do_status(void)
 
     app_sm_entry_t hist[APP_SM_HISTORY_MAX];
     size_t n = app_state_history(hist, APP_SM_HISTORY_MAX);
+    if (s_ops->motor_status) {
+        console_motor_status_t ms;
+        s_ops->motor_status(&ms);
+        char line[320];  // найдовший рядок «остання зупинка» ≈ 250 байтів (UTF-8)
+        console_fmt_motor_status(line, sizeof(line), ms.mv, ms.mv_valid, ms.stby, ms.left_permille,
+                                 ms.right_permille, ms.remaining_ms);
+        printf("%s\r\n", line);
+        console_fmt_last_stop(line, sizeof(line), ms.last_stop_reason, ms.last_stop_min_mv, ms.last_stop_t_ms);
+        printf("%s\r\n", line);
+    }
     printf("історія переходів (%u):\r\n", (unsigned)n);
     for (size_t i = 0; i < n; i++) {
         printf("  %u мс: %s -> %s\r\n", (unsigned)hist[i].t_ms, app_state_name(hist[i].from),
                app_state_name(hist[i].to));
     }
     fflush(stdout);
+}
+
+static void do_motor(console_cmd_t cmd, const char *line)
+{
+    console_motor_cmd_t mc = cmd == CONSOLE_CMD_ARM ? CONSOLE_MOTOR_ARM
+                           : cmd == CONSOLE_CMD_DISARM ? CONSOLE_MOTOR_DISARM : CONSOLE_MOTOR_DRIVE;
+    float t = 0.0f, s = 0.0f;
+    if (cmd == CONSOLE_CMD_DRIVE) {
+        (void)console_parse_drive(line, &t, &s);  // уже перевірено в console_parse
+    }
+    console_motor_reply_t r = {0};
+    if (s_ops->motor_cmd == NULL || !s_ops->motor_cmd(mc, t, s, &r)) {
+        say("Керування не відповіло — команду не прийнято.");
+        return;
+    }
+    char buf[200];
+    if (!r.accepted) {
+        snprintf(buf, sizeof(buf), "Відхилено: %s.", r.text);
+    } else if (cmd == CONSOLE_CMD_ARM) {
+        snprintf(buf, sizeof(buf), "Ровер озброєно. Рух — командою drive <тяга> <поворот>.");
+    } else if (cmd == CONSOLE_CMD_DISARM) {
+        snprintf(buf, sizeof(buf), "Мотори вимкнено: %s.", r.text);
+    } else {
+        char l[16], rr[16];
+        console_fmt_permille(l, sizeof(l), r.left_permille);
+        console_fmt_permille(rr, sizeof(rr), r.right_permille);
+        snprintf(buf, sizeof(buf), "Прийнято: ліве %s, праве %s (діє 2 с, повторіть команду, щоб їхати далі).", l, rr);
+    }
+    say(buf);
 }
 
 static void execute(const char *line)
@@ -63,8 +102,21 @@ static void execute(const char *line)
     case CONSOLE_CMD_EXTRA_ARGS:
         say(console_msg_extra_args());
         break;
-    case CONSOLE_CMD_DENIED_STATE:
-        say(console_msg_denied(console_identify(line)));
+    case CONSOLE_CMD_DENIED_STATE: {
+        char buf[320];
+        console_fmt_denied(buf, sizeof(buf), console_identify(line), app_state_get());
+        say(buf);
+        break;
+    }
+    case CONSOLE_CMD_BAD_ARGS: {
+        float t, s;
+        say(console_msg_drive_error(console_parse_drive(line, &t, &s)));
+        break;
+    }
+    case CONSOLE_CMD_ARM:
+    case CONSOLE_CMD_DISARM:
+    case CONSOLE_CMD_DRIVE:
+        do_motor(cmd, line);
         break;
     case CONSOLE_CMD_HELP:
         say(console_help_text());

@@ -1,9 +1,32 @@
 // HAL консолі: задача console, ввід-вивід через USB-Serial-JTAG, виконання команд.
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include "esp_err.h"
+
+typedef enum { CONSOLE_MOTOR_ARM, CONSOLE_MOTOR_DISARM, CONSOLE_MOTOR_DRIVE } console_motor_cmd_t;
+
+typedef struct {
+    bool accepted;
+    int16_t left_permille;    // застосовані значення бортів зі знаком
+    int16_t right_permille;
+    char text[96];            // пояснення відмови (або повідомлення), українською
+} console_motor_reply_t;
+
+typedef struct {
+    uint32_t mv;
+    bool mv_valid;
+    int stby;
+    int16_t left_permille;
+    int16_t right_permille;
+    uint32_t remaining_ms;
+    const char *last_stop_reason;  // NULL — зупинок ще не було
+    uint32_t last_stop_min_mv;     // 0 — невідома
+    uint32_t last_stop_t_ms;
+} console_motor_status_t;
 
 // Дії від інших модулів передає main — консоль не залежить від watchdog і storage (ADR-0002).
 typedef struct {
@@ -11,6 +34,9 @@ typedef struct {
     void (*request_hang)(void);           // запит навмисного зависання (wdt-test)
     const char *(*reset_reason)(void);    // коротка назва причини останнього скидання
     void (*reboot)(void);                 // перезавантаження; NULL → esp_restart()
+    // Команди моторів: false — керування не відповіло. NULL → команда відхиляється з поясненням.
+    bool (*motor_cmd)(console_motor_cmd_t cmd, float throttle, float steer, console_motor_reply_t *reply);
+    void (*motor_status)(console_motor_status_t *s);
 } console_ops_t;
 
 // Встановлює драйвер USB-Serial-JTAG і стартує задачу console (core 0, пріоритет 1).
