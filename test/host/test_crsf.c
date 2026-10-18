@@ -2,6 +2,9 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <math.h>
+
+#include "crsf_calib.h"
 #include "crsf_core.h"
 #include "test_support.h"
 
@@ -276,6 +279,188 @@ static void test_noise_stream(void)
     CHECK(p.snap.seq == injected);
 }
 
+// ---------- Намір пілота (T2) ----------
+
+static int feq(float a, float b) { return fabsf(a - b) < 0.0005f; }
+
+static void test_axis_deadband(void)
+{
+    CHECK(feq(crsf_axis(992, +1), 0.0f));
+    CHECK(feq(crsf_axis(982, +1), 0.0f));          // спокій стіка зміщений (≈ 978…1000), мертва зона його поглинає
+    CHECK(feq(crsf_axis(1000, +1), 0.0f));
+    CHECK(feq(crsf_axis(992 + 40, +1), 0.0f));     // ще в зоні
+    CHECK(feq(crsf_axis(992 - 40, +1), 0.0f));
+    CHECK(crsf_axis_neutral(992 + 40) && crsf_axis_neutral(992 - 40));
+    CHECK(!crsf_axis_neutral(992 + 41) && !crsf_axis_neutral(992 - 41));
+    // Неперервність на краю: перший крок за межею дає майже нуль, без стрибка.
+    float e = crsf_axis(992 + 41, +1);
+    CHECK(e > 0.0f && e < 0.001f);
+    e = crsf_axis(992 - 41, +1);
+    CHECK(e < 0.0f && e > -0.001f);
+    // Кінці шкали.
+    CHECK(feq(crsf_axis(CRSF_RAW_MAX, +1), 1.0f));
+    CHECK(feq(crsf_axis(CRSF_RAW_MIN, +1), -1.0f));
+    CHECK(crsf_axis(1808, +1) > 0.97f && crsf_axis(1808, +1) < 1.0f);   // виміряний упор стіка вгору
+    // Лінійність між краєм зони й упором: середина дає ≈ половину.
+    float mid = crsf_axis(992 + (41 + 819) / 2, +1);
+    CHECK(mid > 0.45f && mid < 0.55f);
+    // Знак напрямку.
+    CHECK(feq(crsf_axis(CRSF_RAW_MAX, -1), -1.0f));
+    CHECK(crsf_axis(1500, +1) > 0.0f && crsf_axis(1500, -1) < 0.0f);
+    // Монотонність по всьому діапазону й межі.
+    float prev = -2.0f;
+    for (int r = 0; r <= 2047; r++) {
+        float a = crsf_axis((uint16_t)r, +1);
+        CHECK(a >= prev && a >= -1.0f && a <= 1.0f);
+        prev = a;
+    }
+}
+
+static void test_switch(void)
+{
+    CHECK(!crsf_switch_arm(0));
+    CHECK(!crsf_switch_arm(191));
+    CHECK(!crsf_switch_arm(992));
+    CHECK(crsf_switch_arm(993));
+    CHECK(crsf_switch_arm(1792));
+}
+
+static void test_edge(void)
+{
+    crsf_switch_t base = CRSF_SW_UNKNOWN;
+    // Перший кадр лише встановлює базу, навіть якщо тумблер у ARM.
+    CHECK(!crsf_edge(&base, CRSF_SW_ARM));
+    CHECK(base == CRSF_SW_ARM);
+    CHECK(!crsf_edge(&base, CRSF_SW_ARM));           // тримається в ARM — фронту немає
+    CHECK(!crsf_edge(&base, CRSF_SW_DISARM));        // ARM → DISARM — не фронт
+    CHECK(base == CRSF_SW_DISARM);
+    CHECK(crsf_edge(&base, CRSF_SW_ARM));            // DISARM → ARM
+    CHECK(base == CRSF_SW_ARM);
+    CHECK(!crsf_edge(&base, CRSF_SW_ARM));           // фронт лише один раз
+    // Після втрати зв'язку база невідома: тумблер у DISARM → база DISARM без фронту.
+    base = CRSF_SW_UNKNOWN;
+    CHECK(!crsf_edge(&base, CRSF_SW_DISARM));
+    CHECK(base == CRSF_SW_DISARM);
+    CHECK(crsf_edge(&base, CRSF_SW_ARM));
+}
+
+static void test_intent(void)
+{
+    crsf_parser_t p;
+    crsf_parser_init(&p);
+    crsf_intent_t it;
+    crsf_intent(&p.snap, &it);                       // кадрів ще не було
+    CHECK(it.throttle_neutral && it.steer_neutral);
+    CHECK(feq(it.throttle, 0) && feq(it.steer, 0));
+    CHECK(it.sw == CRSF_SW_DISARM);
+
+    uint16_t ch[CRSF_CHANNELS];
+    all_centered(ch);
+    ch[CRSF_IDX_STEER] = 1792;                       // праворуч (виміряно)
+    ch[CRSF_IDX_THROTTLE] = 1808;                    // вгору
+    ch[CRSF_IDX_ARM] = 1792;
+    uint8_t f[CRSF_FRAME_MAX];
+    size_t n = rc_frame(f, ch);
+    CHECK(crsf_feed(&p, f, n, 10) == 1);
+    crsf_intent(&p.snap, &it);
+    CHECK(it.steer > 0.95f && it.throttle > 0.95f);
+    CHECK(!it.throttle_neutral && !it.steer_neutral);
+    CHECK(it.sw == CRSF_SW_ARM);
+
+    // Спокій зі зміщенням (як виміряно): нейтраль.
+    ch[CRSF_IDX_STEER] = 982;
+    ch[CRSF_IDX_THROTTLE] = 978;
+    ch[CRSF_IDX_ARM] = 191;
+    n = rc_frame(f, ch);
+    CHECK(crsf_feed(&p, f, n, 20) == 1);
+    crsf_intent(&p.snap, &it);
+    CHECK(it.throttle_neutral && it.steer_neutral);
+    CHECK(feq(it.throttle, 0) && feq(it.steer, 0));
+    CHECK(it.sw == CRSF_SW_DISARM);
+
+    // Нуль у кадрі обрізається до нижнього краю, тумблер — DISARM (AC-11).
+    ch[CRSF_IDX_ARM] = 0;
+    ch[CRSF_IDX_THROTTLE] = 2047;
+    n = rc_frame(f, ch);
+    CHECK(crsf_feed(&p, f, n, 30) == 1);
+    crsf_intent(&p.snap, &it);
+    CHECK(it.sw == CRSF_SW_DISARM);
+    CHECK(feq(it.throttle, 1.0f));
+}
+
+static void test_calib_signs(void)
+{
+    CHECK(CRSF_THROTTLE_SIGN == +1);
+    CHECK(CRSF_STEER_SIGN == +1);
+}
+
+static int has(const char *hay, const char *needle) { return strstr(hay, needle) != NULL; }
+
+static void test_fmt_status(void)
+{
+    crsf_status_view_t v;
+    memset(&v, 0, sizeof(v));
+    char buf[600];
+
+    // Кадрів ще не було, стенд.
+    v.source = CRSF_SRC_BENCH;
+    v.link = CRSF_LINK_NEVER;
+    v.intent.sw = CRSF_SW_UNKNOWN;
+    crsf_fmt_status(buf, sizeof(buf), &v);
+    CHECK(has(buf, "стенд"));
+    CHECK(has(buf, "не було від старту"));
+    CHECK(has(buf, "—"));                              // час від кадру і сирі канали — прочерк
+    CHECK(has(buf, "невідомо"));                       // тумблер
+    CHECK(!has(buf, "причина FAILSAFE"));
+
+    // Пульт, звʼязок живий, тумблер ARM, озброєння заблоковано.
+    memset(&v, 0, sizeof(v));
+    v.source = CRSF_SRC_REMOTE;
+    v.link = CRSF_LINK_ALIVE;
+    v.since_last_ms = 12;
+    v.snap.have_frame = true;
+    v.snap.ch[CRSF_IDX_STEER] = 1006;
+    v.snap.ch[CRSF_IDX_THROTTLE] = 1808;
+    v.snap.ch[CRSF_IDX_ARM] = 1792;
+    v.snap.cnt.rc_ok = 4321;
+    v.snap.cnt.crc_fail = 2;
+    v.snap.cnt.len_fail = 3;
+    v.snap.cnt.other = 77;
+    v.snap.cnt.overflow = 1;
+    v.intent.throttle = 0.98f;
+    v.intent.steer = 0.01f;
+    v.intent.sw = CRSF_SW_ARM;
+    v.arm_block = "стік не в нейтралі";
+    crsf_fmt_status(buf, sizeof(buf), &v);
+    CHECK(has(buf, "пульт"));
+    CHECK(has(buf, "живий"));
+    CHECK(has(buf, "12 мс"));
+    CHECK(has(buf, "4321") && has(buf, "77"));
+    CHECK(has(buf, "1006") && has(buf, "1808") && has(buf, "1792"));
+    CHECK(has(buf, "+0.98"));
+    CHECK(has(buf, "ARM"));
+    CHECK(has(buf, "стік не в нейтралі"));
+
+    // Стенд закінчено, звʼязок втрачено, FAILSAFE через звʼязок.
+    v.source = CRSF_SRC_NONE;
+    v.link = CRSF_LINK_LOST;
+    v.since_last_ms = 800;
+    v.arm_block = NULL;
+    v.failsafe_cause = "втрата звʼязку";
+    v.intent.sw = CRSF_SW_DISARM;
+    crsf_fmt_status(buf, sizeof(buf), &v);
+    CHECK(has(buf, "немає"));
+    CHECK(has(buf, "втрачено"));
+    CHECK(has(buf, "800 мс"));
+    CHECK(has(buf, "причина FAILSAFE: втрата звʼязку"));
+    CHECK(has(buf, "можна"));                          // озброєння не заблоковано
+
+    // Обрізання буфера не ламає рядок.
+    char small[40];
+    size_t k = crsf_fmt_status(small, sizeof(small), &v);
+    CHECK(k < sizeof(small) && strlen(small) == k);
+}
+
 int main(void)
 {
     test_crc8();
@@ -289,5 +474,11 @@ int main(void)
     test_clamp();
     test_overflow_event();
     test_noise_stream();
+    test_axis_deadband();
+    test_switch();
+    test_edge();
+    test_intent();
+    test_calib_signs();
+    test_fmt_status();
     return test_summary();
 }

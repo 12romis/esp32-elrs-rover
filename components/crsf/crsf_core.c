@@ -1,7 +1,10 @@
 // Приймання кадрів CRSF: збирач із потоку байтів, CRC8, розпакування каналів, лічильники.
 // Чиста логіка: без заголовків ESP-IDF і FreeRTOS (мітки часу передає виклик).
+#include <stdarg.h>
+#include <stdio.h>
 #include <string.h>
 
+#include "crsf_calib.h"
 #include "crsf_core.h"
 
 void crsf_parser_init(crsf_parser_t *p)
@@ -101,4 +104,112 @@ void crsf_note_overflow(crsf_parser_t *p)
 {
     p->n = 0;
     p->snap.cnt.overflow++;
+}
+
+// ---------- Намір пілота ----------
+
+// Нормалізоване відхилення від центру: (raw − 992) / 819, обмежене до [−1, 1].
+static float normalized(uint16_t raw)
+{
+    float x = ((float)raw - (float)CRSF_RAW_CENTER) / CRSF_HALF_TRAVEL;
+    if (x > 1.0f) x = 1.0f;
+    if (x < -1.0f) x = -1.0f;
+    return x;
+}
+
+bool crsf_axis_neutral(uint16_t raw)
+{
+    float x = normalized(raw);
+    return x >= -CRSF_DEADBAND && x <= CRSF_DEADBAND;
+}
+
+float crsf_axis(uint16_t raw, int sign)
+{
+    float x = normalized(raw);
+    float a = x < 0.0f ? -x : x;
+    if (a <= CRSF_DEADBAND) return 0.0f;
+    float y = (a - CRSF_DEADBAND) / (1.0f - CRSF_DEADBAND);   // лінійно від нуля на краю зони до 1 на упорі
+    if (x < 0.0f) y = -y;
+    return sign < 0 ? -y : y;
+}
+
+bool crsf_switch_arm(uint16_t raw)
+{
+    return raw > CRSF_SWITCH_ARM_ABOVE;
+}
+
+void crsf_intent(const crsf_snapshot_t *s, crsf_intent_t *out)
+{
+    if (!s->have_frame) {
+        out->throttle = 0.0f;
+        out->steer = 0.0f;
+        out->throttle_neutral = true;
+        out->steer_neutral = true;
+        out->sw = CRSF_SW_DISARM;
+        return;
+    }
+    out->throttle = crsf_axis(s->ch[CRSF_IDX_THROTTLE], CRSF_THROTTLE_SIGN);
+    out->steer = crsf_axis(s->ch[CRSF_IDX_STEER], CRSF_STEER_SIGN);
+    out->throttle_neutral = crsf_axis_neutral(s->ch[CRSF_IDX_THROTTLE]);
+    out->steer_neutral = crsf_axis_neutral(s->ch[CRSF_IDX_STEER]);
+    out->sw = crsf_switch_arm(s->ch[CRSF_IDX_ARM]) ? CRSF_SW_ARM : CRSF_SW_DISARM;
+}
+
+bool crsf_edge(crsf_switch_t *base, crsf_switch_t now)
+{
+    bool edge = (*base == CRSF_SW_DISARM && now == CRSF_SW_ARM);
+    *base = now;
+    return edge;
+}
+
+// ---------- Рядки status ----------
+
+// Дописує форматований рядок у buf (розмір n) після позиції *pos; переповнення обрізає, не ламаючи рядок.
+static void put(char *buf, size_t n, size_t *pos, const char *fmt, ...) __attribute__((format(printf, 4, 5)));
+
+static void put(char *buf, size_t n, size_t *pos, const char *fmt, ...)
+{
+    if (*pos >= n - 1) return;
+    va_list ap;
+    va_start(ap, fmt);
+    int k = vsnprintf(buf + *pos, n - *pos, fmt, ap);
+    va_end(ap);
+    if (k < 0) return;
+    *pos = (size_t)k >= n - *pos ? n - 1 : *pos + (size_t)k;
+}
+
+size_t crsf_fmt_status(char *buf, size_t n, const crsf_status_view_t *v)
+{
+    if (n == 0) return 0;
+    buf[0] = '\0';
+    size_t pos = 0;
+    const char *src = v->source == CRSF_SRC_BENCH ? "стенд" : (v->source == CRSF_SRC_REMOTE ? "пульт" : "немає");
+    const char *link = v->link == CRSF_LINK_NEVER ? "не було від старту" : (v->link == CRSF_LINK_ALIVE ? "живий" : "втрачено");
+    put(buf, n, &pos, "керування: %s\n", src);
+    if (v->link == CRSF_LINK_NEVER) {
+        put(buf, n, &pos, "звʼязок: %s; від останнього кадру: —\n", link);
+    } else {
+        put(buf, n, &pos, "звʼязок: %s; від останнього кадру: %u мс\n", link, (unsigned)v->since_last_ms);
+    }
+    put(buf, n, &pos, "кадри: каналів %u, CRC-помилок %u, довжина %u, інші %u, переповнення %u\n",
+        (unsigned)v->snap.cnt.rc_ok, (unsigned)v->snap.cnt.crc_fail, (unsigned)v->snap.cnt.len_fail,
+        (unsigned)v->snap.cnt.other, (unsigned)v->snap.cnt.overflow);
+    if (v->snap.have_frame) {
+        put(buf, n, &pos, "канали: CH1 %u, CH2 %u, CH5 %u\n", (unsigned)v->snap.ch[CRSF_IDX_STEER],
+            (unsigned)v->snap.ch[CRSF_IDX_THROTTLE], (unsigned)v->snap.ch[CRSF_IDX_ARM]);
+    } else {
+        put(buf, n, &pos, "канали: CH1 —, CH2 —, CH5 —\n");
+    }
+    const char *sw = v->intent.sw == CRSF_SW_ARM ? "ARM" : (v->intent.sw == CRSF_SW_DISARM ? "DISARM" : "невідомо");
+    put(buf, n, &pos, "рух: тяга %+.2f, поворот %+.2f; тумблер: %s\n", (double)v->intent.throttle,
+        (double)v->intent.steer, sw);
+    if (v->arm_block != NULL) {
+        put(buf, n, &pos, "озброєння з пульта заблоковано: %s\n", v->arm_block);
+    } else {
+        put(buf, n, &pos, "озброєння з пульта: можна\n");
+    }
+    if (v->failsafe_cause != NULL) {
+        put(buf, n, &pos, "причина FAILSAFE: %s\n", v->failsafe_cause);
+    }
+    return pos;
 }

@@ -59,3 +59,53 @@ size_t crsf_feed(crsf_parser_t *p, const uint8_t *data, size_t n, uint32_t now_m
 
 // Подія переповнення буфера приймача: вхідний буфер скидається, лічильник +1.
 void crsf_note_overflow(crsf_parser_t *p);
+
+// ---------- Намір пілота (T2; ADR-0003): канали → тяга, поворот, тумблер ----------
+
+// Мертва зона: ±5 % ходу від центру 992, окремо для кожної осі (квадрат, не коло); за її межею вихід росте
+// лінійно від нуля без стрибка (spec §6). Нормалізація: (raw − 992) / 819, обмеження до [−1, 1].
+#define CRSF_DEADBAND 0.05f
+#define CRSF_HALF_TRAVEL 819.0f
+// Тумблер озброєння: канал 5 вище центру діапазону — ARM, інакше DISARM (spec §6).
+#define CRSF_SWITCH_ARM_ABOVE CRSF_RAW_CENTER
+
+// Вісь після мертвої зони, −1…+1. sign — множник напрямку з crsf_calib.h.
+float crsf_axis(uint16_t raw, int sign);
+// Чи лежить вісь у мертвій зоні (критерій нейтралі для озброєння, spec AC-04).
+bool crsf_axis_neutral(uint16_t raw);
+bool crsf_switch_arm(uint16_t raw);
+
+typedef enum { CRSF_SW_UNKNOWN, CRSF_SW_DISARM, CRSF_SW_ARM } crsf_switch_t;
+
+typedef struct {
+    float throttle;          // −1…+1 після мертвої зони, зі знаком вперед = +
+    float steer;             // −1…+1, праворуч = +
+    bool throttle_neutral;
+    bool steer_neutral;
+    crsf_switch_t sw;        // ARM або DISARM за останнім кадром
+} crsf_intent_t;
+
+// Намір із знімка. Для знімка без кадрів: усе нейтрально, тумблер DISARM.
+void crsf_intent(const crsf_snapshot_t *s, crsf_intent_t *out);
+
+// Фронт тумблера. base — попереднє положення: UNKNOWN на старті й після кожної втрати зв'язку (тоді перший
+// кадр лише встановлює базу). Повертає true на зміні DISARM → ARM. Оновлює базу.
+bool crsf_edge(crsf_switch_t *base, crsf_switch_t now);
+
+// ---------- Рядки status (T2; spec AC-12; contracts/cli.md) ----------
+
+typedef enum { CRSF_SRC_BENCH, CRSF_SRC_REMOTE, CRSF_SRC_NONE } crsf_source_t;
+typedef enum { CRSF_LINK_NEVER, CRSF_LINK_ALIVE, CRSF_LINK_LOST } crsf_link_t;
+
+typedef struct {
+    crsf_source_t source;      // стенд — увесь стендовий режим; пульт — звʼязок живий; немає — стенд закінчено, звʼязок втрачено
+    crsf_link_t link;
+    uint32_t since_last_ms;    // час від останнього кадру каналів (лише якщо link != NEVER)
+    crsf_snapshot_t snap;
+    crsf_intent_t intent;
+    const char *arm_block;     // NULL — озброєння можливе; інакше перша невиконана умова простими словами
+    const char *failsafe_cause;// NULL — не у FAILSAFE
+} crsf_status_view_t;
+
+// Заповнює buf багаторядковим текстом для status. Повертає довжину.
+size_t crsf_fmt_status(char *buf, size_t n, const crsf_status_view_t *v);

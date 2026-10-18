@@ -41,7 +41,7 @@
         "test/host/test_crsf.c"
       ],
       "file": "docs/features/phase3-crsf/tasks/t2-crsf-core-pilot-intent.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T3",
