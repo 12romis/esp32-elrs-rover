@@ -1,0 +1,24 @@
+# Tracker — phase3-crsf
+
+> Status of every task in the epic. `implement` updates **Status** and **Step** after every
+> subagent it runs (and commits them with the task), so this table shows where the run is right now.
+> Status: `todo` · `in_progress` · `blocked` · `review` · `done`.
+> Step: `SELECT` · `RED` · `GREEN` · `REFACTOR` · `GATE` · `REVIEW` · `COMMIT` (`—` before the task starts).
+> A `blocked` row carries its reason in Step, e.g. `GATE — lint red after 3 retries`.
+
+| # | Task | Layer | Owner | Estimate | Blocked by | Status | Step |
+|---|---|---|---|---|---|---|---|
+| T1 | Створити crsf_core: збирач кадрів із потоку байтів, CRC8, розпакування 16 каналів, лічильники | domain | Агент (код); Розробник (приймання на залізі) | M | — | todo | — |
+| T2 | Доповнити crsf_core: намір пілота (нормалізація, мертва зона, тумблер, функція фронту) і рядки status | domain | Агент (код); Розробник (приймання на залізі) | M | T1 | todo | — |
+| T3 | Додати в app_state причину FAILSAFE, підвищення до «напруга» і охорону переходу FAILSAFE → DISARMED | domain | Агент (код); Розробник (приймання на залізі) | S | — | todo | — |
+| T4 | Розширити drive_ctl_step: стендовий режим, таймер зв'язку, втрата зв'язку в ARMED і DISARMED, відмова консолі «керує пульт» | domain | Агент (код); Розробник (приймання на залізі) | M | T1, T3 | todo | — |
+| T5 | Розширити drive_ctl_step: озброєння фронтом тумблера з умовами, рух стіком, роззброєння тумблером і з консолі | domain | Агент (код); Розробник (приймання на залізі) | M | T2, T4 | todo | — |
+| T6 | Розширити drive_ctl_step: вихід з FAILSAFE після ≥ 1 с стабільного зв'язку з тумблером у DISARM і відсічка у FAILSAFE | domain | Агент (код); Розробник (приймання на залізі) | S | T3, T5 | todo | — |
+| T7 | Створити crsf_hal: UART2 420000 8N1, задача crsf_rx, знімок під portMUX, Task WDT | infra | Агент (код); Розробник (приймання на залізі) | M | T1 | todo | — |
+| T8 | Перевірити ui_core на виході FAILSAFE → DISARMED: блимання, писк і індикатор гаснуть, сигнал переходу звучить | tests | Агент (код); Розробник (приймання на залізі) | S | — | todo | — |
+| T9 | Підключити знімок приймача в drive_hal, причину FAILSAFE, журнал подій зв'язку і crsf_start у main | wiring | Агент (код); Розробник (приймання на залізі) | M | T6, T7 | todo | — |
+| T10 | Оновити консоль: help для arm і drive, відповіді disarm, рядки status про пульт через колбек rc_status | ports | Агент (код); Розробник (приймання на залізі) | S | T2, T9 | todo | — |
+| T11 | Прогнати хостовий раннер і перевірки конституції для phase3-crsf, закрити покриття 49 пар і 126 пар | tests | Агент (код); Розробник (приймання на залізі) | S | T6, T8, T10 | todo | — |
+| T12 | Підготувати чекліст приймання фази 3 на залізі і місця для записів у журнал bring-up | docs | Агент (код); Розробник (приймання на залізі) | S | T9, T10, T11 | todo | — |
+
+**Total:** 12 tasks, ~9 person-days.
