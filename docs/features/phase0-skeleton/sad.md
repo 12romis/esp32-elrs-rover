@@ -288,7 +288,7 @@ ADR files live under `docs/features/phase0-skeleton/adr/NNNN-<title>.md`.
 
 **Accepted debt (acceptable in v1, plan to fix later):**
 - SELFTEST — заглушка, завжди успішна; FAILSAFE і FAULT недосяжні на залізі до фази 2+ (spec §1).
-- Дерево в `docs/02-FIRMWARE-CONTEXT.md` §6.4 розходиться з фактичним (нові `app_state`, `console`, `watchdog`, `storage`); документ треба оновити за окремою вказівкою Розробника.
+- Дерево в `docs/02-FIRMWARE-CONTEXT.md` §6.4 розходиться з фактичним (нові `app_state`, `console`, `watchdog`, `storage`); документ оновлено 2026-10-18 за вказівкою Розробника (§6.4 і примітка у §4.5).
 - STBY неналаштований до фази 1 (ADR-0003).
 
 ## 12. Glossary
