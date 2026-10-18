@@ -4,6 +4,7 @@
 #include "app_state_hal.h"
 #include "battery_hal.h"
 #include "board_pins.h"
+#include "crsf_hal.h"
 #include "driver/gpio.h"
 #include "driver/ledc.h"
 #include "esp_log.h"
@@ -19,6 +20,7 @@
 #define CONTROL_CORE 1
 #define CONTROL_PERIOD_MS 20
 #define REQUEST_MAX_AGE_MS 150   // запит старший за це control відкидає; менший за REPLY_TIMEOUT_MS із запасом (ADR-0001)
+#define LAT_LOG_PERIOD_MS 5000   // підсумок затримки «кадр → борти» в журналі раз на 5 с їзди з пульта
 #define REPLY_TIMEOUT_MS 200
 #define QUEUE_LEN 4
 
@@ -186,7 +188,7 @@ bool drive_hal_submit(const drive_req_t *req, drive_reply_t *reply)
     return ok;
 }
 
-static void log_stop(const drive_ctl_out_t *o, app_state_t prev)
+static void log_stop(const drive_ctl_out_t *o, const drive_ctl_in_t *in, uint32_t now)
 {
     switch (o->stop) {
     case DRIVE_STOP_WINDOW_EXPIRED:
@@ -201,12 +203,44 @@ static void log_stop(const drive_ctl_out_t *o, app_state_t prev)
         ESP_LOGW(TAG, "вимірювання напруги застаріло або відсутнє — мотори вимкнено, FAILSAFE");
         break;
     case DRIVE_STOP_DISARM:
-        if (prev == APP_STATE_ARMED) {
+        if (in->state == APP_STATE_ARMED) {
             ESP_LOGI(TAG, "роззброєно — мотори вимкнено");
         }
         break;
+    case DRIVE_STOP_LINK_LOST:
+        // Мітка останнього кадру й мітка переходу — для перевірки ≤ 520 мс під час приймання (spec §6).
+        ESP_LOGW(TAG, "%s — мотори вимкнено, FAILSAFE (причина: втрата звʼязку); останній кадр: %u мс, перехід: %u мс",
+                 drive_stop_text(o->stop), (unsigned)in->rc.t_ms, (unsigned)now);
+        break;
+    case DRIVE_STOP_REMOTE_APPEARED:
+    case DRIVE_STOP_SWITCH_DISARM:
+        ESP_LOGI(TAG, "%s", drive_stop_text(o->stop));
+        break;
     case DRIVE_STOP_NONE:
         break;
+    }
+}
+
+// Події кроку для журналу: по одному рядку на подію, не на такт (contracts/cli.md, «Журнал без команд»).
+static void log_events(const drive_ctl_out_t *o, const drive_ctl_in_t *in, uint32_t now)
+{
+    if (o->events & DRIVE_EVT_REMOTE_APPEARED) {
+        ESP_LOGI(TAG, "з'явився пульт — стендовий режим закінчено; консольні arm і drive вимкнено до перезапуску плати");
+    }
+    if ((o->events & DRIVE_EVT_LINK_LOST) && o->stop != DRIVE_STOP_LINK_LOST) {
+        ESP_LOGW(TAG, "звʼязок з пультом втрачено (%u мс від останнього кадру)", (unsigned)(now - in->rc.t_ms));
+    }
+    if (o->events & DRIVE_EVT_LINK_RESTORED) {
+        ESP_LOGI(TAG, "звʼязок з пультом відновлено");
+    }
+    if (o->events & DRIVE_EVT_REMOTE_ARMED) {
+        ESP_LOGI(TAG, "озброєння з пульта: тумблер перемкнуто в ARM (джерело: пульт)");
+    }
+    if (o->events & DRIVE_EVT_ARM_REFUSED) {
+        ESP_LOGW(TAG, "озброєння з пульта відхилено: %s", drive_block_text(o->arm_block));
+    }
+    if (o->events & DRIVE_EVT_FAILSAFE_EXIT) {
+        ESP_LOGI(TAG, "вихід із FAILSAFE: звʼязок стабільний, тумблер у DISARM");
     }
 }
 
@@ -215,13 +249,18 @@ static void control_task(void *arg)
     (void)arg;
     esp_err_t err = esp_task_wdt_add(NULL);
     if (err != ESP_OK) {
-        // Без Task WDT зависання control лишило б мотори без захисту (ADR-0004): запити не приймаємо, виходи вимкнені.
-        ESP_LOGE(TAG, "esp_task_wdt_add: %s — моторів не запущено, arm і drive недоступні", esp_err_to_name(err));
+        // Без Task WDT зависання control лишило б мотори без захисту (ADR-0004): консоль не приймає запитів (s_running),
+        // а крок керування з outputs_inhibited не озброює з пульта й тримає виходи вимкненими (review F1).
+        ESP_LOGE(TAG, "esp_task_wdt_add: %s — моторів не запущено, озброєння з консолі й пульта недоступне", esp_err_to_name(err));
     } else {
         s_running = true;
     }
     drive_ctl_t ctl;
     drive_ctl_init(&ctl);
+    drive_lat_t lat;            // затримка «кадр → борти» для NFR ≤ 50 мс (spec §6; review F5)
+    drive_lat_reset(&lat);
+    uint32_t lat_seq = 0;
+    uint32_t lat_start_ms = now_ms();
     TickType_t last = xTaskGetTickCount();
     for (;;) {
         queued_req_t item;
@@ -230,7 +269,10 @@ static void control_task(void *arg)
         uint32_t seq = 0;
         bool got = xQueueReceive(s_queue, &item, 0) == pdTRUE;
         in.state = app_state_get();
+        in.failsafe_cause = app_state_failsafe_cause();
+        in.outputs_inhibited = !s_running;
         battery_get_snapshot(&in.battery);
+        crsf_snapshot_get(&in.rc);   // без приймача знімок порожній: стендовий режим (ADR-0001)
         uint32_t now = now_ms();  // час беремо ПІСЛЯ зчитування черги й знімка: вік не стає відʼємним
         in.now_ms = now;
         if (got && (int32_t)(now - item.t_ms) <= REQUEST_MAX_AGE_MS) {
@@ -243,16 +285,51 @@ static void control_task(void *arg)
         drive_ctl_step(&ctl, &in, &out);
 
         apply_outputs(&out.out);  // спершу виходи (ADR-0002)
+        uint32_t applied_ms = now_ms();
+        // Новий кадр, що керує бортами з пульта (ARMED, без запиту переходу): мітка кадру від crsf_rx → мітка запису.
+        if (in.state == APP_STATE_ARMED && ctl.remote_active && ctl.link_alive && !out.has_state_request &&
+            in.rc.have_frame && in.rc.seq != lat_seq) {
+            drive_lat_add(&lat, in.rc.t_ms, applied_ms);
+        }
+        lat_seq = in.rc.seq;
+        if ((uint32_t)(applied_ms - lat_start_ms) >= LAT_LOG_PERIOD_MS) {
+            if (lat.n > 0) {
+                char line[160];
+                drive_lat_fmt(&lat, line, sizeof(line));
+                ESP_LOGI(TAG, "%s", line);
+            }
+            drive_lat_reset(&lat);
+            lat_start_ms = applied_ms;
+        }
         bool transition_ok = true;
         if (out.has_state_request) {
-            transition_ok = app_state_request(out.state_request) == APP_SM_OK;
+            if (out.state_request == APP_STATE_FAILSAFE) {
+                // Вхід у FAILSAFE завжди з причиною; повторне повідомлення «напруга» підвищує причину (ADR-0002).
+                transition_ok = app_state_enter_failsafe(out.failsafe_cause) == APP_SM_OK;
+            } else {
+                transition_ok = app_state_request(out.state_request) == APP_SM_OK;
+            }
         }
+
+        // Знімок стану керування з пульта для status: тяга, поворот, тумблер, що блокує озброєння, вихід з FAILSAFE.
+        crsf_intent_t intent;
+        crsf_intent(&in.rc, &intent);
+        drive_block_t blk = drive_arm_block(&ctl, in.state, &in.battery, &intent, now);
+        drive_fsx_t fsx = drive_failsafe_exit_state(&ctl, in.failsafe_cause, &intent, now);
 
         portENTER_CRITICAL(&s_lock);
         s_status.stby = out.out.stby;
         s_status.left_permille = out.left_permille;
         s_status.right_permille = out.right_permille;
         s_status.remaining_ms = out.remaining_ms;
+        s_status.remote_active = ctl.remote_active;
+        s_status.link_alive = ctl.link_alive;
+        s_status.since_last_ms = in.rc.have_frame ? (uint32_t)(now - in.rc.t_ms) : 0;
+        s_status.intent = intent;
+        s_status.sw_shown = drive_switch_shown(&ctl);
+        s_status.arm_block = blk;
+        s_status.failsafe_cause = in.failsafe_cause;
+        s_status.fsx = fsx;
         if (out.stop != DRIVE_STOP_NONE && !(out.stop == DRIVE_STOP_DISARM && in.state != APP_STATE_ARMED)) {
             s_status.last_stop = out.stop;  // зупинка справжня: запам'ятати для status (AC-12)
             s_status.last_stop_min_mv = out.min_mv;
@@ -270,11 +347,15 @@ static void control_task(void *arg)
                                       .stop = out.stop,
                                       .mv = out.mv,
                                       .left_permille = out.left_permille,
-                                      .right_permille = out.right_permille};
+                                      .right_permille = out.right_permille,
+                                      .failsafe_cause = in.failsafe_cause,
+                                      .fsx = fsx,
+                                      .switch_arm = intent.sw == CRSF_SW_ARM};
             s_reply_seq = seq;
             xSemaphoreGive(s_reply_sem);
         }
-        log_stop(&out, in.state);  // лог — після вимкнення виходів і запиту стану
+        log_stop(&out, &in, now);  // лог — після вимкнення виходів і запиту стану
+        log_events(&out, &in, now);
 
         esp_task_wdt_reset();
         vTaskDelayUntil(&last, pdMS_TO_TICKS(CONTROL_PERIOD_MS));

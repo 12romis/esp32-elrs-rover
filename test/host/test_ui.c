@@ -382,6 +382,50 @@ static void test_silence_outside_failsafe(void)
     CHECK(sounded == 0);
 }
 
+// ---------- Вихід із FAILSAFE у DISARMED (phase3-crsf, AC-08): раніше цього переходу не існувало ----------
+static void test_failsafe_exit_to_disarmed(void)
+{
+    ui_core_t u;
+    ui_core_init(&u, HZ);
+    settle(&u, 0, APP_STATE_ARMED);
+    tick(&u, 1000, APP_STATE_FAILSAFE, 0, 0, true);                // вхід: сигнал переходу
+    ui_out_t o = tick(&u, 3000, APP_STATE_FAILSAFE, 0, 0, true);   // періодичний писк іде
+    CHECK(o.buzzer_on);
+    // Вихід посеред звучання періодичного сигналу: звучання замінює сигнал переходу в DISARMED.
+    o = tick(&u, 3100, APP_STATE_DISARMED, 0, 0, true);
+    CHECK(o.indicator == UI_IND_OFF);                              // червоний індикатор погас
+    CHECK(o.red && !o.green);                                      // задні ліхтарі червоні постійно (DISARMED за замовчуванням)
+    CHECK(!o.head);
+    CHECK(o.buzzer_on && o.buzzer_hz == HZ);                       // один сигнал переходу в DISARMED
+    o = tick(&u, 3200, APP_STATE_DISARMED, 0, 0, true);
+    CHECK(!o.buzzer_on);                                           // сигнал 100 мс закінчився
+    // Блимання припинилося: ліхтарі світять постійно, а не мерехтять із періодом FAILSAFE.
+    for (uint32_t t = 3300; t <= 5300; t += 100) {
+        o = tick(&u, t, APP_STATE_DISARMED, 0, 0, true);
+        CHECK(o.red && !o.green);
+        CHECK(!o.buzzer_on);                                       // періодичного писку немає
+        CHECK(o.indicator == UI_IND_OFF);
+    }
+}
+
+static void test_failsafe_reentry_restarts_timeline(void)
+{
+    ui_core_t u;
+    ui_core_init(&u, HZ);
+    settle(&u, 0, APP_STATE_ARMED);
+    tick(&u, 1000, APP_STATE_FAILSAFE, 0, 0, true);
+    tick(&u, 1600, APP_STATE_FAILSAFE, 0, 0, true);                // у фазі «не світить»
+    tick(&u, 2000, APP_STATE_DISARMED, 0, 0, true);                // вихід
+    settle(&u, 2500, APP_STATE_ARMED);
+    ui_out_t o = tick(&u, 4000, APP_STATE_FAILSAFE, 0, 0, true);   // новий вхід
+    CHECK(o.red && !o.green);                                      // блимання знову починається зі «світить»
+    CHECK(o.buzzer_on && o.buzzer_hz == HZ);                       // новий сигнал переходу
+    o = tick(&u, 5999, APP_STATE_FAILSAFE, 0, 0, true);
+    CHECK(!o.buzzer_on);                                           // перший періодичний — через 2000 мс від нового входу
+    o = tick(&u, 6000, APP_STATE_FAILSAFE, 0, 0, true);
+    CHECK(o.buzzer_on);
+}
+
 int main(void)
 {
     test_permissions();
@@ -399,5 +443,7 @@ int main(void)
     test_failsafe_timeline();
     test_failsafe_without_expander();
     test_silence_outside_failsafe();
+    test_failsafe_exit_to_disarmed();
+    test_failsafe_reentry_restarts_timeline();
     return test_summary();
 }

@@ -1,0 +1,386 @@
+{
+  "slug": "phase3-crsf",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Створити crsf_core: збирач кадрів із потоку байтів, CRC8, розпакування 16 каналів, лічильники",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-06",
+        "AC-10",
+        "AC-11"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений, серед тестів — усі випадки з чекліста; `check_core_headers.sh` чистий для `crsf_core.c`; `idf.py build` без помилок і нових попереджень",
+      "files_hint": [
+        "components/crsf/crsf_core.c",
+        "components/crsf/include/crsf_core.h",
+        "test/host/test_crsf.c",
+        "components/crsf/CMakeLists.txt"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t1-crsf-core-frames.md",
+      "status": "done"
+    },
+    {
+      "id": "T2",
+      "title": "Доповнити crsf_core: намір пілота (нормалізація, мертва зона, тумблер, функція фронту) і рядки status",
+      "layer": "domain",
+      "deps": [
+        "T1"
+      ],
+      "acs": [
+        "AC-02",
+        "AC-11",
+        "AC-12"
+      ],
+      "dod": "Хостові тести наміру й рядків status зелені; `crsf_calib.h` посилається на запис у `docs/measured.md`; `check_core_headers.sh` чистий; `idf.py build` без нових попереджень",
+      "files_hint": [
+        "components/crsf/crsf_core.c",
+        "components/crsf/include/crsf_core.h",
+        "components/crsf/include/crsf_calib.h",
+        "test/host/test_crsf.c"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t2-crsf-core-pilot-intent.md",
+      "status": "done"
+    },
+    {
+      "id": "T3",
+      "title": "Додати в app_state причину FAILSAFE, підвищення до «напруга» і охорону переходу FAILSAFE → DISARMED",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-08",
+        "AC-09",
+        "AC-17"
+      ],
+      "dod": "Тести автомата зелені: 49 з 49 пар, охорона і підвищення причини; Наявний код фаз 0–2 збирається без змін; `idf.py build` без нових попереджень",
+      "files_hint": [
+        "components/app_state/app_state_core.c",
+        "components/app_state/include/app_state.h",
+        "components/app_state/app_state_hal.c",
+        "components/app_state/include/app_state_hal.h",
+        "test/host/test_app_state.c"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t3-app-state-failsafe-cause.md",
+      "status": "done"
+    },
+    {
+      "id": "T4",
+      "title": "Розширити drive_ctl_step: стендовий режим, таймер зв'язку, втрата зв'язку в ARMED і DISARMED, відмова консолі «керує пульт»",
+      "layer": "domain",
+      "deps": [
+        "T1",
+        "T3"
+      ],
+      "acs": [
+        "AC-05",
+        "AC-06",
+        "AC-07",
+        "AC-13",
+        "AC-14",
+        "AC-15"
+      ],
+      "dod": "Хостові тести таймера й стенду зелені; Інваріант виходи-перед-станом (ADR-0002 фази 1) збережено в кожній новій гілці; `idf.py build` без нових попереджень",
+      "files_hint": [
+        "components/drive/drive_core.c",
+        "components/drive/include/drive_core.h",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t4-drive-core-link-and-source.md",
+      "status": "done"
+    },
+    {
+      "id": "T5",
+      "title": "Розширити drive_ctl_step: озброєння фронтом тумблера з умовами, рух стіком, роззброєння тумблером і з консолі",
+      "layer": "domain",
+      "deps": [
+        "T2",
+        "T4"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-02",
+        "AC-03",
+        "AC-04",
+        "AC-16",
+        "AC-17"
+      ],
+      "dod": "Хостові тести озброєння, руху й роззброєння зелені; Жодна гілка не піднімає STBY поза ARMED; `idf.py build` без нових попереджень",
+      "files_hint": [
+        "components/drive/drive_core.c",
+        "components/drive/include/drive_core.h",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t5-drive-core-remote-arm-drive.md",
+      "status": "done"
+    },
+    {
+      "id": "T6",
+      "title": "Розширити drive_ctl_step: вихід з FAILSAFE після ≥ 1 с стабільного зв'язку з тумблером у DISARM і відсічка у FAILSAFE",
+      "layer": "domain",
+      "deps": [
+        "T3",
+        "T5"
+      ],
+      "acs": [
+        "AC-08",
+        "AC-09"
+      ],
+      "dod": "Хостові тести виходу з FAILSAFE зелені; `idf.py build` без нових попереджень",
+      "files_hint": [
+        "components/drive/drive_core.c",
+        "components/drive/include/drive_core.h",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t6-drive-core-failsafe-recovery.md",
+      "status": "done"
+    },
+    {
+      "id": "T7",
+      "title": "Створити crsf_hal: UART2 420000 8N1, задача crsf_rx, знімок під portMUX, Task WDT",
+      "layer": "infra",
+      "deps": [
+        "T1"
+      ],
+      "acs": [
+        "AC-05",
+        "AC-10"
+      ],
+      "dod": "`idf.py build` без помилок і нових попереджень; `check_pins.sh` чистий; Приймання на залізі (T12): лічильники кадрів ростуть ≈ 100/с, 0 % битих",
+      "files_hint": [
+        "components/crsf/crsf_hal.c",
+        "components/crsf/include/crsf_hal.h",
+        "components/crsf/CMakeLists.txt"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t7-crsf-hal-uart-task.md",
+      "status": "done"
+    },
+    {
+      "id": "T8",
+      "title": "Перевірити ui_core на виході FAILSAFE → DISARMED: блимання, писк і індикатор гаснуть, сигнал переходу звучить",
+      "layer": "tests",
+      "deps": [],
+      "acs": [
+        "AC-08"
+      ],
+      "dod": "Тест виходу з FAILSAFE у `test_ui.c` зелений; `idf.py build` без нових попереджень",
+      "files_hint": [
+        "components/ui/ui_core.c",
+        "test/host/test_ui.c"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t8-ui-core-failsafe-exit.md",
+      "status": "done"
+    },
+    {
+      "id": "T9",
+      "title": "Підключити знімок приймача в drive_hal, причину FAILSAFE, журнал подій зв'язку і crsf_start у main",
+      "layer": "wiring",
+      "deps": [
+        "T6",
+        "T7"
+      ],
+      "acs": [
+        "AC-03",
+        "AC-04",
+        "AC-05",
+        "AC-07",
+        "AC-14"
+      ],
+      "dod": "`idf.py build` без помилок і нових попереджень; Приймання на залізі в T12 (зупинка ≤ 520 мс, журнал подій)",
+      "files_hint": [
+        "components/drive/drive_hal.c",
+        "components/drive/include/drive_hal.h",
+        "components/drive/CMakeLists.txt",
+        "main/main.c"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t9-drive-hal-main-wiring.md",
+      "status": "done"
+    },
+    {
+      "id": "T10",
+      "title": "Оновити консоль: help для arm і drive, відповіді disarm, рядки status про пульт через колбек rc_status",
+      "layer": "ports",
+      "deps": [
+        "T2",
+        "T9"
+      ],
+      "acs": [
+        "AC-04",
+        "AC-09",
+        "AC-12",
+        "AC-15",
+        "AC-16"
+      ],
+      "dod": "Тести консолі зелені; `idf.py build` без нових попереджень; Вивід status перевірено на залізі (T12)",
+      "files_hint": [
+        "components/rover_console/console_core.c",
+        "components/rover_console/include/console_core.h",
+        "components/rover_console/include/console.h",
+        "components/rover_console/console_hal.c",
+        "main/main.c",
+        "test/host/test_console.c"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t10-console-help-disarm-status.md",
+      "status": "done"
+    },
+    {
+      "id": "T11",
+      "title": "Прогнати хостовий раннер і перевірки конституції для phase3-crsf, закрити покриття 49 пар і 126 пар",
+      "layer": "tests",
+      "deps": [
+        "T6",
+        "T8",
+        "T10"
+      ],
+      "acs": [
+        "AC-18",
+        "AC-19"
+      ],
+      "dod": "Усі хостові тести зелені за ≤ 5 с; Усі `check_*.sh` чисті; `idf.py build` 0 помилок, 0 нових попереджень",
+      "files_hint": [
+        "test/host/run_tests.sh",
+        "test/host/check_core_headers.sh",
+        "test/host/check_pins.sh",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t11-host-runner-guardrails.md",
+      "status": "done"
+    },
+    {
+      "id": "T12",
+      "title": "Підготувати чекліст приймання фази 3 на залізі і місця для записів у журнал bring-up",
+      "layer": "docs",
+      "deps": [
+        "T9",
+        "T10",
+        "T11"
+      ],
+      "acs": [
+        "AC-20"
+      ],
+      "dod": "`acceptance.md` містить по кроку на кожен апаратний AC і запис KPI; Агент не позначає T7, T9, T10 виконаними до запису Розробника",
+      "files_hint": [
+        "docs/features/phase3-crsf/acceptance.md"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t12-acceptance-checklist.md",
+      "status": "done"
+    },
+    {
+      "id": "T13",
+      "title": "Порівнювати вік кадру й тривалість звʼязку беззнаково (review F6)",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-05",
+        "AC-08"
+      ],
+      "dod": "Тест у test_drive.c: вік кадру > 2^31 мс → звʼязок втрачено, FAILSAFE у ARMED; вихід з FAILSAFE не настає через «відʼємну» тривалість. Раннер зелений, `idf.py build` без нових попереджень.",
+      "files_hint": [
+        "components/drive/drive_core.c",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t13-unsigned-link-age.md",
+      "status": "done"
+    },
+    {
+      "id": "T14",
+      "title": "Показувати в status тумблер «невідомо», коли база фронту невідома (review F4)",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-12"
+      ],
+      "dod": "Тест через drive_ctl_step: стенд → UNKNOWN; живий звʼязок з тумблером ARM → ARM; після втрати → UNKNOWN. Раннер зелений, збірка без нових попереджень.",
+      "files_hint": [
+        "components/drive/drive_core.c",
+        "components/drive/include/drive_core.h",
+        "components/drive/drive_hal.c",
+        "components/drive/include/drive_hal.h",
+        "main/main.c",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t14-switch-unknown-in-status.md",
+      "status": "done"
+    },
+    {
+      "id": "T15",
+      "title": "Пояснення FAILSAFE у відмовах і status за причиною (review F2)",
+      "layer": "ports",
+      "deps": [],
+      "acs": [
+        "AC-08",
+        "AC-09",
+        "AC-12"
+      ],
+      "dod": "Тести test_console.c для обох причин і обох форматерів; test_crsf.c — рядок виходу з FAILSAFE; тексти не обрізаються буферами HAL. Раннер зелений, збірка без нових попереджень.",
+      "files_hint": [
+        "components/rover_console/console_core.c",
+        "components/rover_console/include/console_core.h",
+        "components/rover_console/console_hal.c",
+        "components/crsf/crsf_core.c",
+        "components/crsf/include/crsf_core.h",
+        "main/main.c",
+        "test/host/test_console.c",
+        "test/host/test_crsf.c"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t15-failsafe-texts-by-cause.md",
+      "status": "done"
+    },
+    {
+      "id": "T16",
+      "title": "Відповідь arm у стенді називає джерело «стенд» (review F3)",
+      "layer": "ports",
+      "deps": [],
+      "acs": [
+        "AC-13"
+      ],
+      "dod": "Тест test_console.c на текст відповіді. Раннер зелений, збірка без нових попереджень.",
+      "files_hint": [
+        "components/rover_console/console_core.c",
+        "components/rover_console/include/console_core.h",
+        "components/rover_console/console_hal.c",
+        "test/host/test_console.c"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t16-arm-reply-bench-source.md",
+      "status": "done"
+    },
+    {
+      "id": "T17",
+      "title": "Без підписки control на Task WDT пульт не озброює й мотори не крутяться (review F1)",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-01",
+        "AC-03"
+      ],
+      "dod": "Тест test_drive.c: із забороною фронт тумблера не дає ARMED, виходи вимкнені навіть в ARMED; без заборони поведінка незмінна. HAL — перевірка рев'ю. Раннер зелений, збірка без нових попереджень.",
+      "files_hint": [
+        "components/drive/drive_core.c",
+        "components/drive/include/drive_core.h",
+        "components/drive/drive_hal.c",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t17-no-wdt-no-motors.md",
+      "status": "done"
+    },
+    {
+      "id": "T18",
+      "title": "Діагностика затримки «кадр → борти» в журналі для NFR ≤ 50 мс (review F5)",
+      "layer": "infra",
+      "deps": [],
+      "acs": [
+        "AC-01"
+      ],
+      "dod": "Тест накопичувача в test_drive.c; крок у acceptance.md. Раннер зелений, збірка без нових попереджень.",
+      "files_hint": [
+        "components/drive/drive_core.c",
+        "components/drive/include/drive_core.h",
+        "components/drive/drive_hal.c",
+        "test/host/test_drive.c",
+        "docs/features/phase3-crsf/acceptance.md"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t18-latency-diagnostics.md",
+      "status": "done"
+    }
+  ]
+}

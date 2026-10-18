@@ -61,6 +61,16 @@ static void do_status(void)
                               us.indicator_red, us.buzzer_on, us.remaining_ms);
         printf("%s\r\n", line);
     }
+    if (s_ops->rc_status) {
+        static char rc[800];   // рядки про пульт (зокрема вихід з FAILSAFE); static — не на стеку консолі, викликає лише вона
+        s_ops->rc_status(rc, sizeof(rc));
+        for (char *p = rc; *p != '\0'; p++) {   // \n → \r\n для терміналу
+            if (*p == '\n') {
+                putchar('\r');
+            }
+            putchar(*p);
+        }
+    }
     printf("історія переходів (%u):\r\n", (unsigned)n);
     for (size_t i = 0; i < n; i++) {
         printf("  %u мс: %s -> %s\r\n", (unsigned)hist[i].t_ms, app_state_name(hist[i].from),
@@ -82,11 +92,11 @@ static void do_motor(console_cmd_t cmd, const char *line)
         say("Керування не відповіло — команду не прийнято.");
         return;
     }
-    char buf[200];
+    char buf[320];
     if (!r.accepted) {
         snprintf(buf, sizeof(buf), "Відхилено: %s.", r.text);
     } else if (cmd == CONSOLE_CMD_ARM) {
-        snprintf(buf, sizeof(buf), "Ровер озброєно. Рух — командою drive <тяга> <поворот>.");
+        snprintf(buf, sizeof(buf), "%s", console_msg_arm_ok());
     } else if (cmd == CONSOLE_CMD_DISARM) {
         snprintf(buf, sizeof(buf), "Мотори вимкнено: %s.", r.text);
     } else {
@@ -119,7 +129,7 @@ static void do_ui(console_cmd_t cmd, const char *line)
     }
     if (r.result != UI_OK) {
         char why[400];  // найдовший текст відмови ≈ 360 байтів (UTF-8), не обрізається
-        console_fmt_ui_denied(why, sizeof(why), r.result, app_state_get());
+        console_fmt_ui_denied(why, sizeof(why), r.result, app_state_get(), app_state_failsafe_cause());
         snprintf(buf, sizeof(buf), "Відхилено: %s", why);
     } else if (r.bus_failure) {
         snprintf(buf, sizeof(buf), "Відхилено: збій шини — розширювач не підтвердив запис, стан світла не змінено (head %s, red %s, green %s).",
@@ -150,7 +160,7 @@ static void execute(const char *line)
         break;
     case CONSOLE_CMD_DENIED_STATE: {
         char buf[320];
-        console_fmt_denied(buf, sizeof(buf), console_identify(line), app_state_get());
+        console_fmt_denied(buf, sizeof(buf), console_identify(line), app_state_get(), app_state_failsafe_cause());
         say(buf);
         break;
     }

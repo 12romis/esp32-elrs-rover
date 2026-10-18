@@ -16,12 +16,16 @@ static void test_avg(void)
 
 static void test_adc_to_mv(void)
 {
-    // Коефіцієнт 4.047 (попередній, P3 точка 1): 2450 мВ на АЦП → 9915 мВ? перевіряємо формулу, а не фізику.
-    CHECK(battery_adc_to_mv(1000) == 4047);
-    CHECK(battery_adc_to_mv(0) == 0);
-    CHECK(battery_adc_to_mv(2000) == 8094);
-    // Друк прошивки 8231 мВ при raw ≈ 2034 мВ на вході АЦП (≈ 8231/4.047)
-    CHECK(battery_adc_to_mv(2034) == 8231);
+    // Двоточкове калібрування (P3, docs/measured.md, 2026-10-18): k = 3.973, зсув +151 мВ.
+    CHECK(BATTERY_SCALE_PPM == 3973 && BATTERY_OFFSET_MV == 151);
+    CHECK(battery_adc_to_mv(0) == 151);
+    CHECK(battery_adc_to_mv(1000) == 4124);
+    // Виміряні точки: 1484 мВ на піні ↔ 6047 мВ на мультиметрі; ≈ 2041 мВ ↔ 8260 мВ на вольтметрі (похибка ≤ 1 мВ).
+    CHECK(battery_adc_to_mv(1484) == 6046);
+    CHECK(battery_adc_to_mv(2041) == 8259);
+    // Межа відсічки 6000 мВ: 1472 мВ на піні — ще нижче порога, 1473 — вже ні.
+    CHECK(battery_is_below_cutoff(battery_adc_to_mv(1472)));
+    CHECK(!battery_is_below_cutoff(battery_adc_to_mv(1473)));
 }
 
 static void test_cutoff(void)

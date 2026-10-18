@@ -7,6 +7,7 @@
 #include "app_state_hal.h"
 #include "battery_hal.h"
 #include "console.h"
+#include "crsf_hal.h"
 #include "drive_hal.h"
 #include "ioexp_hal.h"
 #include "esp_log.h"
@@ -41,7 +42,8 @@ static bool motor_cmd(console_motor_cmd_t cmd, float throttle, float steer, cons
     if (!r.accepted) {
         drive_reason_text(r.reason, r.mv, reply->text, sizeof(reply->text));
     } else if (cmd == CONSOLE_MOTOR_DISARM) {
-        drive_disarm_text(r.state_before, r.has_state_request, r.state_request, r.stop, reply->text, sizeof(reply->text));
+        drive_disarm_text(r.state_before, r.has_state_request, r.state_request, r.stop, r.failsafe_cause, r.fsx,
+                          r.switch_arm, reply->text, sizeof(reply->text));
     } else {
         reply->text[0] = '\0';
     }
@@ -98,6 +100,26 @@ static void ui_status(console_ui_status_t *s)
                                .remaining_ms = u.remaining_ms};
 }
 
+// Рядки status про пульт: дані знімка приймача (crsf) і кроку керування (drive); форматує crsf_core (чиста логіка).
+static size_t rc_status(char *buf, size_t n)
+{
+    drive_status_t d;
+    drive_hal_status(&d);
+    crsf_status_view_t v;
+    memset(&v, 0, sizeof(v));
+    crsf_snapshot_get(&v.snap);
+    v.source = !d.remote_active ? CRSF_SRC_BENCH : (d.link_alive ? CRSF_SRC_REMOTE : CRSF_SRC_NONE);
+    v.link = !d.remote_active ? CRSF_LINK_NEVER : (d.link_alive ? CRSF_LINK_ALIVE : CRSF_LINK_LOST);
+    v.since_last_ms = d.since_last_ms;
+    v.intent = d.intent;
+    v.intent.sw = d.sw_shown;   // «невідомо», поки база фронту невідома (contracts/cli.md)
+    v.arm_block = d.arm_block == DRIVE_BLOCK_NONE ? NULL : drive_block_text(d.arm_block);
+    bool fs = app_state_get() == APP_STATE_FAILSAFE;
+    v.failsafe_cause = fs ? app_failsafe_cause_name(d.failsafe_cause) : NULL;
+    v.failsafe_exit = fs ? drive_fsx_text(d.fsx) : NULL;   // чого бракує для виходу (spec AC-08, AC-09)
+    return crsf_fmt_status(buf, n, &v);
+}
+
 static const console_ops_t s_console_ops = {
     .storage_status = storage_status_report,
     .request_hang = watchdog_request_hang,
@@ -108,6 +130,7 @@ static const console_ops_t s_console_ops = {
     .light_cmd = light_cmd,
     .beep_cmd = beep_cmd,
     .ui_status = ui_status,
+    .rc_status = rc_status,
 };
 
 void app_main(void)
@@ -129,6 +152,12 @@ void app_main(void)
     esp_err_t bat = battery_start();
     // control стартує до storage_init, тож disarm працює і в BOOT, якщо сховище не піднялося.
     esp_err_t ctl = drv == ESP_OK ? drive_start() : drv;
+    // Приймач пульта (ADR-0001): після control, щоб знімок читався з першого такту. Збій UART не зупиняє старт: без
+    // кадрів ровер лишається в стендовому режимі, консольні arm і drive працюють як у фазі 1.
+    esp_err_t rcv = crsf_start();
+    if (rcv != ESP_OK) {
+        ESP_LOGW(TAG, "приймач CRSF не стартував (%s) — стендовий режим, керування лише з консолі", esp_err_to_name(rcv));
+    }
     esp_err_t ui = ui_start();  // ui лише читає стан і борти, мотори від неї не залежать
     storage_status_t storage = storage_init();
 

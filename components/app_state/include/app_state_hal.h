@@ -12,6 +12,11 @@ esp_err_t app_state_hal_init(void);
 // Запит переходу під мʼютексом. Успіх і відмова друкуються в журнал з іменами станів.
 app_sm_result_t app_state_request(app_state_t to);
 
+// Вхід у FAILSAFE з причиною (ADR-0002). Якщо ровер уже у FAILSAFE, причина «напруга» підвищує поточну назавжди.
+app_sm_result_t app_state_enter_failsafe(app_failsafe_cause_t cause);
+
+app_failsafe_cause_t app_state_failsafe_cause(void);
+
 app_state_t app_state_get(void);
 
 // Копія історії переходів (від найстарішого). Повертає кількість записів.
