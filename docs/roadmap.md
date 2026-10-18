@@ -54,7 +54,7 @@ updated_at: "2026-10-18"
 | 0 | `phase0-skeleton` — прошивається, консоль відповідає, WDT зареєстрований, стан BOOT друкується | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 0 — скелет» | S | shipped — [spec](features/phase0-skeleton/spec.md) |
 | 1 | `phase1-drive` — `drive 0.3 0` крутить борти, `disarm` зупиняє, при VBAT < 6.0 В мотори не стартують | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 1 — живлення і мотори» | M | shipped — [spec](features/phase1-drive/spec.md) |
 | 2 | `phase2-io` — світло й зумер керуються з консолі, при старті світла немає | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 2 — I²C, PCF8574, світло, зумер» | S | shipped — [spec](features/phase2-io/spec.md) |
-| 3 | `phase3-crsf` — стіки пульта рухають мотори, вимкнення пульта зупиняє за 500 мс | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 3 — ELRS / CRSF» | S | building — [spec](features/phase3-crsf/spec.md) |
+| 3 | `phase3-crsf` — стіки пульта рухають мотори, вимкнення пульта зупиняє за 500 мс | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 3 — ELRS / CRSF» | S | shipped — [spec](features/phase3-crsf/spec.md) |
 | 4 | `phase4-encoders` — чотири лічильники дають стабільні оберти зі знаком і без зривів | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 4 — енкодери» | M | idea |
 | 5 | `phase5-pid` — борт тримає задану швидкість під навантаженням, коефіцієнти міняються з консолі | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 5 — PID» | M | idea |
 | 6 | `phase6-tof` — ровер зупиняється перед перешкодою, дозволяє здати назад, переживає відмову сенсора | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 6 — далекоміри й протизіткнення» | L | idea |
@@ -157,3 +157,4 @@ flowchart LR
 | 0 `phase0-skeleton` | 2026-10-18 | [changelog](features/phase0-skeleton/changelog.md) |
 | 1 `phase1-drive` | 2026-10-18 | [changelog](features/phase1-drive/changelog.md) (AC-13, AC-15, AC-22 чекають OQ-1) |
 | 2 `phase2-io` | 2026-10-18 | [changelog](features/phase2-io/changelog.md) (AC-14, AC-15 на залізі не перевірені: розширювач запаяний) |
+| 3 `phase3-crsf` | 2026-10-18 | [changelog](features/phase3-crsf/changelog.md) (AC-14 і NFR ≤ 50 мс на залізі не показані; T13–T18 на залізі не прогнані) |
