@@ -9,8 +9,8 @@ files_hint: ["components/rover_console/console_core.c", "components/rover_consol
 owner: "Агент (код); Розробник (приймання на залізі)"
 estimate: "S"
 context_budget: "M"
-status: "review"
-step: "REVIEW — очікує приймання на залізі (T12)"
+status: "done"
+step: "COMMIT"
 ---
 
 <!-- To the executing agent: work from what is inlined here. If a slice is insufficient, ambiguous, or contradicts the code in front of you, open the named file for the full text and follow that. Do not invent the missing part. -->
