@@ -244,7 +244,7 @@
         "test/host/test_drive.c"
       ],
       "file": "docs/features/phase3-crsf/tasks/t11-host-runner-guardrails.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T12",
