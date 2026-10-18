@@ -20,6 +20,11 @@ expect() { # опис, очікуваний код (0 або nz = рівно 1: 
 mkdir -p "$TMP/empty"
 expect "порожній набір тестів падає" nz "$HERE/run_tests.sh" "$TMP/empty"
 expect "набір із тестом проходить" 0 "$HERE/run_tests.sh"
+# середовище ESP-IDF у PATH (чужий ld) не повинно ламати хостову збірку
+mkdir -p "$TMP/.espressif/bin"
+printf '#!/bin/sh\necho "неправильний ld" >&2\nexit 1\n' >"$TMP/.espressif/bin/ld"
+chmod +x "$TMP/.espressif/bin/ld"
+expect "run_tests ігнорує інструменти .espressif у PATH" 0 env PATH="$TMP/.espressif/bin:$PATH" "$HERE/run_tests.sh"
 
 # --- check_core_headers.sh
 mkdir -p "$TMP/bad/components/foo" "$TMP/good/components/foo"

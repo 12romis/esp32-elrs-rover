@@ -3,6 +3,9 @@
 # запускає і підсумовує. Порожній набір (0 тестів) вважається помилкою.
 # Використання: test/host/run_tests.sh [каталог_з_тестами]
 set -u
+# Середовище ESP-IDF додає в PATH інструменти інших архітектур (наприклад, ld від esp32ulp-elf),
+# які ламають хостовий gcc: прибираємо каталоги .espressif із PATH.
+PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '/\.espressif/' | paste -sd: -)"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DIR="${1:-$ROOT/test/host}"
 BUILD="$(mktemp -d)"
