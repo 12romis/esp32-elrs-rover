@@ -135,8 +135,10 @@ void ui_core_tick(ui_core_t *u, const ui_in_t *in, ui_out_t *out)
         if (in->state == APP_STATE_FAILSAFE) {
             u->manual[UI_CH_HEAD] = false;  // при виході з ARMED фари гаснуть
         }
-        if (in->state == APP_STATE_FAILSAFE) {
-            u->failsafe = true;
+        // Відлік FAILSAFE (блимання, періодичний писк) живе лише у FAILSAFE; з фази 3 з нього є вихід у DISARMED
+        // (ADR-0002 phase3-crsf), тож прапорець скидається при будь-якій зміні стану на інший.
+        u->failsafe = (in->state == APP_STATE_FAILSAFE);
+        if (u->failsafe) {
             u->fs_entry_ms = in->now_ms;
             u->fs_periods_done = 0;
         }

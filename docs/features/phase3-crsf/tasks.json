@@ -169,7 +169,7 @@
         "test/host/test_ui.c"
       ],
       "file": "docs/features/phase3-crsf/tasks/t8-ui-core-failsafe-exit.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T9",
