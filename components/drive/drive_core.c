@@ -145,6 +145,31 @@ const char *drive_block_text(drive_block_t b)
     return "?";
 }
 
+void drive_lat_reset(drive_lat_t *l)
+{
+    *l = (drive_lat_t){0};
+}
+
+void drive_lat_add(drive_lat_t *l, uint32_t frame_ms, uint32_t applied_ms)
+{
+    uint32_t d = (uint32_t)(applied_ms - frame_ms);
+    if (l->n == 0 || d < l->min_ms) {
+        l->min_ms = d;
+    }
+    if (d > l->max_ms) {
+        l->max_ms = d;
+    }
+    l->sum_ms += d;
+    l->n++;
+}
+
+void drive_lat_fmt(const drive_lat_t *l, char *buf, size_t n)
+{
+    unsigned avg = l->n ? (unsigned)((l->sum_ms + l->n / 2) / l->n) : 0;
+    snprintf(buf, n, "затримка кадр → борти: %u кадрів, мін %u, сер %u, макс %u мс", (unsigned)l->n,
+             (unsigned)l->min_ms, avg, (unsigned)l->max_ms);
+}
+
 crsf_switch_t drive_switch_shown(const drive_ctl_t *c)
 {
     return c->remote_active && c->link_alive ? c->sw_base : CRSF_SW_UNKNOWN;

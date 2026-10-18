@@ -380,7 +380,7 @@
         "docs/features/phase3-crsf/acceptance.md"
       ],
       "file": "docs/features/phase3-crsf/tasks/t18-latency-diagnostics.md",
-      "status": "todo"
+      "status": "done"
     }
   ]
 }

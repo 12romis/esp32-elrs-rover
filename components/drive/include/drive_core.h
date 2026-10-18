@@ -160,6 +160,20 @@ drive_block_t drive_arm_block(const drive_ctl_t *c, app_state_t st, const batter
 // Пояснення простими словами українською (для рядка журналу й status).
 const char *drive_block_text(drive_block_t b);
 
+// Затримка «кадр прийнято приймальною задачею → команда записана бортам» (spec §6, NFR ≤ 50 мс; review F5).
+typedef struct {
+    uint32_t n;        // кадрів у вибірці
+    uint32_t min_ms;
+    uint32_t max_ms;
+    uint64_t sum_ms;
+} drive_lat_t;
+
+void drive_lat_reset(drive_lat_t *l);
+// Беззнакова різниця applied_ms − frame_ms (переповнення мс не впливає).
+void drive_lat_add(drive_lat_t *l, uint32_t frame_ms, uint32_t applied_ms);
+// Рядок журналу: «затримка кадр → борти: N кадрів, мін X, сер Y, макс Z мс».
+void drive_lat_fmt(const drive_lat_t *l, char *buf, size_t n);
+
 // Тумблер для status (contracts/cli.md): база фронту кроку керування; UNKNOWN у стенді й без звʼязку (spec AC-12).
 crsf_switch_t drive_switch_shown(const drive_ctl_t *c);
 

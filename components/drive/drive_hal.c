@@ -20,6 +20,7 @@
 #define CONTROL_CORE 1
 #define CONTROL_PERIOD_MS 20
 #define REQUEST_MAX_AGE_MS 150   // запит старший за це control відкидає; менший за REPLY_TIMEOUT_MS із запасом (ADR-0001)
+#define LAT_LOG_PERIOD_MS 5000   // підсумок затримки «кадр → борти» в журналі раз на 5 с їзди з пульта
 #define REPLY_TIMEOUT_MS 200
 #define QUEUE_LEN 4
 
@@ -256,6 +257,10 @@ static void control_task(void *arg)
     }
     drive_ctl_t ctl;
     drive_ctl_init(&ctl);
+    drive_lat_t lat;            // затримка «кадр → борти» для NFR ≤ 50 мс (spec §6; review F5)
+    drive_lat_reset(&lat);
+    uint32_t lat_seq = 0;
+    uint32_t lat_start_ms = now_ms();
     TickType_t last = xTaskGetTickCount();
     for (;;) {
         queued_req_t item;
@@ -280,6 +285,22 @@ static void control_task(void *arg)
         drive_ctl_step(&ctl, &in, &out);
 
         apply_outputs(&out.out);  // спершу виходи (ADR-0002)
+        uint32_t applied_ms = now_ms();
+        // Новий кадр, що керує бортами з пульта (ARMED, без запиту переходу): мітка кадру від crsf_rx → мітка запису.
+        if (in.state == APP_STATE_ARMED && ctl.remote_active && ctl.link_alive && !out.has_state_request &&
+            in.rc.have_frame && in.rc.seq != lat_seq) {
+            drive_lat_add(&lat, in.rc.t_ms, applied_ms);
+        }
+        lat_seq = in.rc.seq;
+        if ((uint32_t)(applied_ms - lat_start_ms) >= LAT_LOG_PERIOD_MS) {
+            if (lat.n > 0) {
+                char line[160];
+                drive_lat_fmt(&lat, line, sizeof(line));
+                ESP_LOGI(TAG, "%s", line);
+            }
+            drive_lat_reset(&lat);
+            lat_start_ms = applied_ms;
+        }
         bool transition_ok = true;
         if (out.has_state_request) {
             if (out.state_request == APP_STATE_FAILSAFE) {

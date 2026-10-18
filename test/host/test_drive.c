@@ -914,6 +914,26 @@ static void test_outputs_inhibited(void)
     CHECK(o.has_state_request && o.state_request == APP_STATE_FAILSAFE);
 }
 
+// T18 (review F5): затримка «кадр прийнято → команда бортам» для NFR ≤ 50 мс (spec §6): кількість, мін, середнє, макс.
+static void test_latency_stats(void)
+{
+    drive_lat_t l;
+    char b[160];
+    drive_lat_reset(&l);
+    CHECK(l.n == 0);
+    drive_lat_fmt(&l, b, sizeof b);
+    CHECK(strstr(b, "0 кадрів") != NULL);
+    drive_lat_add(&l, 1000, 1012);
+    drive_lat_add(&l, 1010, 1031);
+    drive_lat_add(&l, 0xFFFFFFF8u, 3);                // переповнення мс: 11 мс, не 4 млрд; середнє 44/3 ≈ 15
+    CHECK(l.n == 3 && l.min_ms == 11 && l.max_ms == 21);
+    drive_lat_fmt(&l, b, sizeof b);
+    CHECK(strstr(b, "3 кадрів") && strstr(b, "мін 11") && strstr(b, "сер 15") && strstr(b, "макс 21"));
+    CHECK(strstr(b, "мс") != NULL && strlen(b) < sizeof b - 1);
+    drive_lat_reset(&l);
+    CHECK(l.n == 0 && l.max_ms == 0);
+}
+
 static void test_failsafe_exit_switch(void)
 {
     drive_ctl_t c; drive_ctl_out_t o;
@@ -1068,6 +1088,7 @@ int main(void)
     test_link_age_unsigned();
     test_switch_shown();
     test_outputs_inhibited();
+    test_latency_stats();
     test_failsafe_voltage_never_exits();
     test_failsafe_exit_texts();
     test_matrix_126();
