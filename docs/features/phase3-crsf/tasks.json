@@ -19,7 +19,7 @@
         "components/crsf/CMakeLists.txt"
       ],
       "file": "docs/features/phase3-crsf/tasks/t1-crsf-core-frames.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T2",

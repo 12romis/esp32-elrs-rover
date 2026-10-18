@@ -1,2 +1,3 @@
-# Фаза-заглушка: додай <crsf>_core.c і <crsf>_hal.c у SRCS, коли дійдеш до відповідної фази.
-idf_component_register(INCLUDE_DIRS "include")
+# Фаза 3: crsf_core.c (чиста логіка кадрів і каналів); crsf_hal.c додається в T7.
+idf_component_register(SRCS "crsf_core.c"
+                       INCLUDE_DIRS "include")
