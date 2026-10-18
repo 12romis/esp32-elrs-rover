@@ -94,6 +94,11 @@ typedef struct {
 #define DRIVE_EVT_LINK_RESTORED (1u << 2)
 #define DRIVE_EVT_REMOTE_ARMED (1u << 3)      // озброєно тумблером пульта
 #define DRIVE_EVT_ARM_REFUSED (1u << 4)       // фронт тумблера відхилено: причина в arm_block
+#define DRIVE_EVT_FAILSAFE_EXIT (1u << 5)     // запит виходу FAILSAFE → DISARMED (звʼязок відновлено)
+#define DRIVE_EVT_CAUSE_UPGRADE (1u << 6)     // відсічка по напрузі у FAILSAFE через звʼязок: причина стає «напруга»
+
+// Стабільний звʼязок для виходу з FAILSAFE: безперервно живий від першого кадру після втрати (spec AC-08).
+#define DRIVE_LINK_STABLE_MS 1000
 
 // Що блокує озброєння з пульта (spec AC-04). Порядок перевірки: звʼязок → напруга → нейтраль стіків → фронт тумблера.
 typedef enum {
@@ -112,6 +117,7 @@ typedef struct {
     battery_snapshot_t battery;
     drive_req_t req;
     crsf_snapshot_t rc;          // знімок приймача (phase3-crsf); без кадрів (have_frame = false) — стендовий режим
+    app_failsafe_cause_t failsafe_cause;  // причина поточного FAILSAFE з app_state (NONE поза FAILSAFE)
 } drive_ctl_in_t;
 
 typedef struct {
@@ -152,3 +158,16 @@ drive_block_t drive_arm_block(const drive_ctl_t *c, app_state_t st, const batter
 
 // Пояснення простими словами українською (для рядка журналу й status).
 const char *drive_block_text(drive_block_t b);
+
+// Чого бракує для виходу з FAILSAFE (для status, відповіді disarm і журналу; spec AC-08, AC-09).
+typedef enum {
+    DRIVE_FSX_READY,          // умови виконано: вихід у DISARMED відбудеться на цьому такті
+    DRIVE_FSX_RESET_ONLY,     // причина не «втрата звʼязку»: вихід лише апаратним скиданням
+    DRIVE_FSX_NO_LINK,        // звʼязку немає
+    DRIVE_FSX_STABILIZING,    // звʼязок живий менше DRIVE_LINK_STABLE_MS
+    DRIVE_FSX_SWITCH_ARM      // тумблер у ARM: опустіть його в DISARM
+} drive_fsx_t;
+
+drive_fsx_t drive_failsafe_exit_state(const drive_ctl_t *c, app_failsafe_cause_t cause, const crsf_intent_t *intent,
+                                      uint32_t now_ms);
+const char *drive_fsx_text(drive_fsx_t x);

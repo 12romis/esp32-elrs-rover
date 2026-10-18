@@ -145,6 +145,36 @@ const char *drive_block_text(drive_block_t b)
     return "?";
 }
 
+drive_fsx_t drive_failsafe_exit_state(const drive_ctl_t *c, app_failsafe_cause_t cause, const crsf_intent_t *intent,
+                                      uint32_t now_ms)
+{
+    if (cause != APP_FS_LINK_LOST) {
+        return DRIVE_FSX_RESET_ONLY;   // відсічка по напрузі: лише апаратне скидання (spec AC-09)
+    }
+    if (!c->remote_active || !c->link_alive) {
+        return DRIVE_FSX_NO_LINK;
+    }
+    if ((int32_t)(now_ms - c->link_since_ms) < (int32_t)DRIVE_LINK_STABLE_MS) {
+        return DRIVE_FSX_STABILIZING;
+    }
+    if (intent->sw != CRSF_SW_DISARM) {
+        return DRIVE_FSX_SWITCH_ARM;
+    }
+    return DRIVE_FSX_READY;
+}
+
+const char *drive_fsx_text(drive_fsx_t x)
+{
+    switch (x) {
+    case DRIVE_FSX_READY:       return "умови виходу з аварійної зупинки виконано";
+    case DRIVE_FSX_RESET_ONLY:  return "після відсічки по напрузі вихід лише апаратним скиданням плати чи перемиканням живлення";
+    case DRIVE_FSX_NO_LINK:     return "звʼязку з пультом немає: вихід можливий після відновлення";
+    case DRIVE_FSX_STABILIZING: return "звʼязок ще не стабільний: потрібна секунда без втрат";
+    case DRIVE_FSX_SWITCH_ARM:  return "тумблер у ARM: опустіть його в DISARM";
+    }
+    return "?";
+}
+
 // Звʼязок з пультом (ADR-0001, ADR-0003): стендовий режим закінчується першим валідним кадром каналів; далі звʼязок
 // живий, доки від мітки останнього кадру минуло не більше DRIVE_LINK_TIMEOUT_MS. Втрата й відновлення скидають
 // базу тумблера (перший кадр після них лише встановлює її, фронтом не є) і дають подію для журналу.
@@ -287,6 +317,27 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
         break;
     }
 
+    // FAILSAFE через втрату звʼязку (T6, ADR-0002): відсічка по напрузі (те саме правило, що в ARMED) підвищує причину;
+    // інакше після ≥ 1 с стабільного звʼязку з тумблером у DISARM — запит виходу в DISARMED.
+    if (in->state == APP_STATE_FAILSAFE && in->failsafe_cause == APP_FS_LINK_LOST && c->remote_active) {
+        bool cut = !usable || battery_is_below_cutoff(in->battery.mv);
+        if (cut) {
+            o->has_state_request = true;
+            o->state_request = APP_STATE_FAILSAFE;
+            o->failsafe_cause = APP_FS_VOLTAGE;
+            o->mv = in->battery.mv;
+            o->events |= DRIVE_EVT_CAUSE_UPGRADE;
+        } else if (c->link_alive) {
+            crsf_intent_t fit;
+            crsf_intent(&in->rc, &fit);
+            if (drive_failsafe_exit_state(c, in->failsafe_cause, &fit, in->now_ms) == DRIVE_FSX_READY) {
+                o->has_state_request = true;
+                o->state_request = APP_STATE_DISARMED;
+                o->events |= DRIVE_EVT_FAILSAFE_EXIT;
+            }
+        }
+    }
+
     // Пульт: намір пілота, фронт тумблера, озброєння, рух і роззброєння тумблером (ADR-0003). База тумблера
     // оновлюється на кожному такті за живого звʼязку, тож фронт буває рівно один раз.
     if (c->remote_active && c->link_alive) {
@@ -395,4 +446,5 @@ void drive_disarm_text(app_state_t state_before, bool has_req, app_state_t req, 
         snprintf(buf, n, "стан %s не змінено: DISARMED досяжний лише з ARMED", app_state_name(state_before));
     }
 }
+
 

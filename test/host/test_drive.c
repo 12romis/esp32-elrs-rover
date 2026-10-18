@@ -755,6 +755,125 @@ static void test_stby_only_in_armed_remote(void)
     }
 }
 
+// ---------- phase3-crsf T6: вихід з FAILSAFE після втрати звʼязку ----------
+
+static drive_ctl_out_t go_fs(drive_ctl_t *c, uint32_t now, battery_snapshot_t b, crsf_snapshot_t rc, app_failsafe_cause_t cause)
+{
+    drive_ctl_out_t o;
+    drive_ctl_in_t in = in_for(APP_STATE_FAILSAFE, now, b, DRIVE_REQ_NONE, 0, 0);
+    in.rc = rc;
+    in.failsafe_cause = cause;
+    drive_ctl_step(c, &in, &o);
+    return o;
+}
+
+// Ровер у FAILSAFE через втрату звʼязку, звʼязок щойно відновлено першим кадром у момент t.
+static void failsafe_link_lost_then_back(drive_ctl_t *c, uint32_t t, uint16_t sw)
+{
+    drive_ctl_init(c);
+    go_rc(c, APP_STATE_ARMED, 1000, snap(8000, 1000), rc_raw(1000, 1, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    go_fs(c, 1700, snap(8000, 1700), rc_raw(1000, 1, NEUT, NEUT, SW_ARM), APP_FS_LINK_LOST);   // втрата
+    go_fs(c, t, snap(8000, t), rc_raw(t, 50, NEUT, NEUT, (uint16_t)sw), APP_FS_LINK_LOST);     // перший кадр після втрати
+}
+
+static void test_failsafe_exit_window(void)
+{
+    drive_ctl_t c; drive_ctl_out_t o;
+    failsafe_link_lost_then_back(&c, 3000, SW_DIS);
+    CHECK(c.link_alive && c.link_since_ms == 3000);
+    // 999 мс — ні, 1000 мс — так (AC-08).
+    o = go_fs(&c, 3999, snap(8000, 3999), rc_raw(3990, 150, NEUT, NEUT, SW_DIS), APP_FS_LINK_LOST);
+    CHECK(!o.has_state_request && !(o.events & DRIVE_EVT_FAILSAFE_EXIT));
+    check_off(o.out);
+    o = go_fs(&c, 4000, snap(8000, 4000), rc_raw(3995, 151, NEUT, NEUT, SW_DIS), APP_FS_LINK_LOST);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_DISARMED);
+    CHECK(o.events & DRIVE_EVT_FAILSAFE_EXIT);
+    check_off(o.out);
+
+    // Нова втрата < 1 с звʼязку: вікно з нуля (AC-09).
+    failsafe_link_lost_then_back(&c, 3000, SW_DIS);
+    o = go_fs(&c, 3600, snap(8000, 3600), rc_raw(3000, 50, NEUT, NEUT, SW_DIS), APP_FS_LINK_LOST);   // кадрів немає 600 мс
+    CHECK(!c.link_alive && (o.events & DRIVE_EVT_LINK_LOST) && !o.has_state_request);
+    o = go_fs(&c, 4000, snap(8000, 4000), rc_raw(3990, 90, NEUT, NEUT, SW_DIS), APP_FS_LINK_LOST);   // повернувся
+    CHECK(c.link_alive && c.link_since_ms == 3990);
+    o = go_fs(&c, 4900, snap(8000, 4900), rc_raw(4890, 140, NEUT, NEUT, SW_DIS), APP_FS_LINK_LOST);
+    CHECK(!o.has_state_request);                                       // від 3990 лише 910 мс
+    o = go_fs(&c, 4990, snap(8000, 4990), rc_raw(4980, 150, NEUT, NEUT, SW_DIS), APP_FS_LINK_LOST);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_DISARMED);
+
+    // Пропущені кадри, проміжок < 500 мс: вікно не скидається.
+    failsafe_link_lost_then_back(&c, 3000, SW_DIS);
+    o = go_fs(&c, 3450, snap(8000, 3450), rc_raw(3020, 52, NEUT, NEUT, SW_DIS), APP_FS_LINK_LOST); // 430 мс без кадру
+    CHECK(c.link_alive && c.link_since_ms == 3000 && !o.has_state_request);
+    o = go_fs(&c, 4000, snap(8000, 4000), rc_raw(3990, 150, NEUT, NEUT, SW_DIS), APP_FS_LINK_LOST);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_DISARMED);
+}
+
+static void test_failsafe_exit_switch(void)
+{
+    drive_ctl_t c; drive_ctl_out_t o;
+    // Тумблер лишився в ARM: чекає навіть після 1 с (AC-09).
+    failsafe_link_lost_then_back(&c, 3000, SW_ARM);
+    o = go_fs(&c, 4500, snap(8000, 4500), rc_raw(4490, 150, NEUT, NEUT, SW_ARM), APP_FS_LINK_LOST);
+    CHECK(!o.has_state_request);
+    CHECK(drive_failsafe_exit_state(&c, APP_FS_LINK_LOST,
+                                    &(crsf_intent_t){0, 0, true, true, CRSF_SW_ARM}, 4500) == DRIVE_FSX_SWITCH_ARM);
+    // Тумблер щойно опущений при вже повному вікні: вихід на цьому такті.
+    o = go_fs(&c, 4520, snap(8000, 4520), rc_raw(4510, 151, NEUT, NEUT, SW_DIS), APP_FS_LINK_LOST);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_DISARMED);
+    // Вихід не озброює й не їде: виходи вимкнено.
+    check_off(o.out);
+    // Рух стіка у FAILSAFE нічого не дає.
+    failsafe_link_lost_then_back(&c, 3000, SW_DIS);
+    o = go_fs(&c, 3500, snap(8000, 3500), rc_raw(3490, 100, 1792, 1808, SW_DIS), APP_FS_LINK_LOST);
+    check_off(o.out);
+    CHECK(o.left_permille == 0 && o.right_permille == 0);
+}
+
+static void test_failsafe_voltage_never_exits(void)
+{
+    drive_ctl_t c; drive_ctl_out_t o;
+    // Причина «напруга» (вже підвищена): вихід не запитується, хоч би що (AC-09).
+    failsafe_link_lost_then_back(&c, 3000, SW_DIS);
+    o = go_fs(&c, 6000, snap(8000, 6000), rc_raw(5990, 400, NEUT, NEUT, SW_DIS), APP_FS_VOLTAGE);
+    CHECK(!o.has_state_request && !(o.events & DRIVE_EVT_FAILSAFE_EXIT));
+    CHECK(drive_failsafe_exit_state(&c, APP_FS_VOLTAGE, &(crsf_intent_t){0, 0, true, true, CRSF_SW_DISARM}, 6000) == DRIVE_FSX_RESET_ONLY);
+    // Відсічка спрацювала, поки ровер у FAILSAFE через звʼязок: запит на підвищення причини, не вихід.
+    failsafe_link_lost_then_back(&c, 3000, SW_DIS);
+    o = go_fs(&c, 4500, snap(5999, 4500), rc_raw(4490, 150, NEUT, NEUT, SW_DIS), APP_FS_LINK_LOST);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_FAILSAFE && o.failsafe_cause == APP_FS_VOLTAGE);
+    CHECK(o.events & DRIVE_EVT_CAUSE_UPGRADE);
+    CHECK(!(o.events & DRIVE_EVT_FAILSAFE_EXIT));
+    check_off(o.out);
+    // Те саме правило застарілого виміру, що й в ARMED.
+    failsafe_link_lost_then_back(&c, 3000, SW_DIS);
+    o = go_fs(&c, 4500, snap(8000, 3000), rc_raw(4490, 150, NEUT, NEUT, SW_DIS), APP_FS_LINK_LOST);   // знімок 1500 мс тому
+    CHECK(o.state_request == APP_STATE_FAILSAFE && o.failsafe_cause == APP_FS_VOLTAGE);
+    // Після підвищення (причина вже «напруга») запит не повторюється кожного такту.
+    o = go_fs(&c, 4520, snap(5999, 4520), rc_raw(4510, 151, NEUT, NEUT, SW_DIS), APP_FS_VOLTAGE);
+    CHECK(!o.has_state_request);
+    // FAILSAFE у стенді (відсічка без кадрів): нічого не запитується.
+    drive_ctl_init(&c);
+    o = go_fs(&c, 3000, snap(5000, 3000), (crsf_snapshot_t){0}, APP_FS_VOLTAGE);
+    CHECK(!o.has_state_request && !c.remote_active);
+}
+
+static void test_failsafe_exit_texts(void)
+{
+    drive_ctl_t c;
+    drive_ctl_init(&c);
+    crsf_intent_t it = {0, 0, true, true, CRSF_SW_DISARM};
+    CHECK(drive_failsafe_exit_state(&c, APP_FS_LINK_LOST, &it, 5000) == DRIVE_FSX_NO_LINK);   // звʼязку немає
+    c.remote_active = true; c.link_alive = true; c.link_since_ms = 4500;
+    CHECK(drive_failsafe_exit_state(&c, APP_FS_LINK_LOST, &it, 5000) == DRIVE_FSX_STABILIZING);
+    CHECK(drive_failsafe_exit_state(&c, APP_FS_LINK_LOST, &it, 5500) == DRIVE_FSX_READY);
+    CHECK(strstr(drive_fsx_text(DRIVE_FSX_RESET_ONLY), "скиданн") != NULL);
+    CHECK(strstr(drive_fsx_text(DRIVE_FSX_SWITCH_ARM), "DISARM") != NULL);
+    CHECK(strstr(drive_fsx_text(DRIVE_FSX_STABILIZING), "стабільн") != NULL);
+    CHECK(strstr(drive_fsx_text(DRIVE_FSX_NO_LINK), "звʼязку") != NULL);
+    CHECK(strlen(drive_fsx_text(DRIVE_FSX_READY)) > 0);
+}
+
 int main(void)
 {
     test_mix();
@@ -783,5 +902,9 @@ int main(void)
     test_remote_driving();
     test_remote_disarm_paths();
     test_stby_only_in_armed_remote();
+    test_failsafe_exit_window();
+    test_failsafe_exit_switch();
+    test_failsafe_voltage_never_exits();
+    test_failsafe_exit_texts();
     return test_summary();
 }
