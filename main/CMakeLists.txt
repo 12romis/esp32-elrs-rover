@@ -1,3 +1,4 @@
-idf_component_register(SRCS "main.c" "app_states.c"
+idf_component_register(SRCS "main.c"
                        INCLUDE_DIRS "."
-                       REQUIRES board nvs_flash esp_timer)
+                       REQUIRES app_state rover_console watchdog storage
+                       PRIV_REQUIRES log)

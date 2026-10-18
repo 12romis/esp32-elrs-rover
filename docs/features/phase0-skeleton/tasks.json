@@ -1,0 +1,181 @@
+{
+  "slug": "phase0-skeleton",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Створити хостовий раннер і скрипти перевірок test/host",
+      "layer": "tests",
+      "deps": [],
+      "acs": [
+        "AC-08",
+        "AC-09",
+        "AC-10",
+        "AC-11"
+      ],
+      "dod": "`test/host/run_tests.sh` на порожньому наборі повертає ненульовий код; на наборі з тестом — «N тестів, N пройдено» за ≤ 5 с.",
+      "files_hint": [
+        "test/host/"
+      ],
+      "file": "docs/features/phase0-skeleton/tasks/t1-host-test-runner.md",
+      "status": "done"
+    },
+    {
+      "id": "T2",
+      "title": "Створити компонент app_state: таблиця переходів, запит переходу, історія (core)",
+      "layer": "domain",
+      "deps": [
+        "T1"
+      ],
+      "acs": [
+        "AC-06",
+        "AC-01"
+      ],
+      "dod": "Хостовий тест підтверджує 49 з 49 перевірених пар (10 дозволених, 39 відхилених).",
+      "files_hint": [
+        "components/app_state/",
+        "test/host/test_app_state.c"
+      ],
+      "file": "docs/features/phase0-skeleton/tasks/t2-app-state-core.md",
+      "status": "done"
+    },
+    {
+      "id": "T3",
+      "title": "Створити console_core: збирання рядка, розбір команд, права за станом",
+      "layer": "app",
+      "deps": [
+        "T1",
+        "T2"
+      ],
+      "acs": [
+        "AC-02",
+        "AC-03",
+        "AC-05"
+      ],
+      "dod": "Хостові тести AC-02, AC-03, AC-05 проходять.",
+      "files_hint": [
+        "components/rover_console/",
+        "test/host/test_console.c"
+      ],
+      "file": "docs/features/phase0-skeleton/tasks/t3-console-core.md",
+      "status": "done"
+    },
+    {
+      "id": "T4",
+      "title": "Створити storage_core і watchdog_core: політика сховища та політика годування",
+      "layer": "domain",
+      "deps": [
+        "T1"
+      ],
+      "acs": [
+        "AC-12",
+        "AC-04"
+      ],
+      "dod": "Хостові тести політик проходять (усі гілки рішення сховища).",
+      "files_hint": [
+        "components/storage/",
+        "components/watchdog/",
+        "test/host/test_storage.c",
+        "test/host/test_watchdog.c"
+      ],
+      "file": "docs/features/phase0-skeleton/tasks/t4-storage-watchdog-core.md",
+      "status": "done"
+    },
+    {
+      "id": "T5",
+      "title": "Створити app_state_hal і storage_hal: мʼютекс, журнал переходів, ініціалізація NVS",
+      "layer": "infra",
+      "deps": [
+        "T2",
+        "T4"
+      ],
+      "acs": [
+        "AC-12",
+        "AC-01"
+      ],
+      "dod": "`idf.py build` без помилок і без нових попереджень.",
+      "files_hint": [
+        "components/app_state/",
+        "components/storage/"
+      ],
+      "file": "docs/features/phase0-skeleton/tasks/t5-app-state-storage-hal.md",
+      "status": "done"
+    },
+    {
+      "id": "T6",
+      "title": "Створити watchdog_hal: програмний panic для TWDT, задача heartbeat, причина скидання",
+      "layer": "infra",
+      "deps": [
+        "T4"
+      ],
+      "acs": [
+        "AC-04"
+      ],
+      "dod": "`idf.py build` без помилок і без нових попереджень.",
+      "files_hint": [
+        "components/watchdog/"
+      ],
+      "file": "docs/features/phase0-skeleton/tasks/t6-watchdog-hal.md",
+      "status": "done"
+    },
+    {
+      "id": "T7",
+      "title": "Створити console_hal: ввід-вивід USB, задача console, виконання команд",
+      "layer": "ports",
+      "deps": [
+        "T3",
+        "T5"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-02",
+        "AC-13"
+      ],
+      "dod": "`idf.py build` без помилок і без нових попереджень.",
+      "files_hint": [
+        "components/rover_console/"
+      ],
+      "file": "docs/features/phase0-skeleton/tasks/t7-console-hal.md",
+      "status": "done"
+    },
+    {
+      "id": "T8",
+      "title": "Скласти main.c: послідовність старту, REQUIRES, видалення main/app_states",
+      "layer": "wiring",
+      "deps": [
+        "T5",
+        "T6",
+        "T7"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-07",
+        "AC-08"
+      ],
+      "dod": "`idf.py build` без помилок і без нових попереджень; хостовий прогін і три перевірки чисті.",
+      "files_hint": [
+        "main/",
+        "components/board/include/"
+      ],
+      "file": "docs/features/phase0-skeleton/tasks/t8-main-wiring.md",
+      "status": "done"
+    },
+    {
+      "id": "T9",
+      "title": "Підготувати чек-лист приймання фази 0 на залізі для журналу bring-up",
+      "layer": "docs",
+      "deps": [
+        "T8"
+      ],
+      "acs": [
+        "AC-04",
+        "AC-07"
+      ],
+      "dod": "Чек-лист охоплює чотири записи приймання зі spec §7 і виміри з §6.",
+      "files_hint": [
+        "docs/features/phase0-skeleton/acceptance.md"
+      ],
+      "file": "docs/features/phase0-skeleton/tasks/t9-acceptance-checklist.md",
+      "status": "done"
+    }
+  ]
+}
