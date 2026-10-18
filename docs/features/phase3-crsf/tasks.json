@@ -264,6 +264,123 @@
       ],
       "file": "docs/features/phase3-crsf/tasks/t12-acceptance-checklist.md",
       "status": "done"
+    },
+    {
+      "id": "T13",
+      "title": "Порівнювати вік кадру й тривалість звʼязку беззнаково (review F6)",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-05",
+        "AC-08"
+      ],
+      "dod": "Тест у test_drive.c: вік кадру > 2^31 мс → звʼязок втрачено, FAILSAFE у ARMED; вихід з FAILSAFE не настає через «відʼємну» тривалість. Раннер зелений, `idf.py build` без нових попереджень.",
+      "files_hint": [
+        "components/drive/drive_core.c",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t13-unsigned-link-age.md",
+      "status": "done"
+    },
+    {
+      "id": "T14",
+      "title": "Показувати в status тумблер «невідомо», коли база фронту невідома (review F4)",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-12"
+      ],
+      "dod": "Тест через drive_ctl_step: стенд → UNKNOWN; живий звʼязок з тумблером ARM → ARM; після втрати → UNKNOWN. Раннер зелений, збірка без нових попереджень.",
+      "files_hint": [
+        "components/drive/drive_core.c",
+        "components/drive/include/drive_core.h",
+        "components/drive/drive_hal.c",
+        "components/drive/include/drive_hal.h",
+        "main/main.c",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t14-switch-unknown-in-status.md",
+      "status": "todo"
+    },
+    {
+      "id": "T15",
+      "title": "Пояснення FAILSAFE у відмовах і status за причиною (review F2)",
+      "layer": "ports",
+      "deps": [],
+      "acs": [
+        "AC-08",
+        "AC-09",
+        "AC-12"
+      ],
+      "dod": "Тести test_console.c для обох причин і обох форматерів; test_crsf.c — рядок виходу з FAILSAFE; тексти не обрізаються буферами HAL. Раннер зелений, збірка без нових попереджень.",
+      "files_hint": [
+        "components/rover_console/console_core.c",
+        "components/rover_console/include/console_core.h",
+        "components/rover_console/console_hal.c",
+        "components/crsf/crsf_core.c",
+        "components/crsf/include/crsf_core.h",
+        "main/main.c",
+        "test/host/test_console.c",
+        "test/host/test_crsf.c"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t15-failsafe-texts-by-cause.md",
+      "status": "todo"
+    },
+    {
+      "id": "T16",
+      "title": "Відповідь arm у стенді називає джерело «стенд» (review F3)",
+      "layer": "ports",
+      "deps": [],
+      "acs": [
+        "AC-13"
+      ],
+      "dod": "Тест test_console.c на текст відповіді. Раннер зелений, збірка без нових попереджень.",
+      "files_hint": [
+        "components/rover_console/console_core.c",
+        "components/rover_console/include/console_core.h",
+        "components/rover_console/console_hal.c",
+        "test/host/test_console.c"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t16-arm-reply-bench-source.md",
+      "status": "todo"
+    },
+    {
+      "id": "T17",
+      "title": "Без підписки control на Task WDT пульт не озброює й мотори не крутяться (review F1)",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-01",
+        "AC-03"
+      ],
+      "dod": "Тест test_drive.c: із забороною фронт тумблера не дає ARMED, виходи вимкнені навіть в ARMED; без заборони поведінка незмінна. HAL — перевірка рев'ю. Раннер зелений, збірка без нових попереджень.",
+      "files_hint": [
+        "components/drive/drive_core.c",
+        "components/drive/include/drive_core.h",
+        "components/drive/drive_hal.c",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t17-no-wdt-no-motors.md",
+      "status": "todo"
+    },
+    {
+      "id": "T18",
+      "title": "Діагностика затримки «кадр → борти» в журналі для NFR ≤ 50 мс (review F5)",
+      "layer": "infra",
+      "deps": [],
+      "acs": [
+        "AC-01"
+      ],
+      "dod": "Тест накопичувача в test_drive.c; крок у acceptance.md. Раннер зелений, збірка без нових попереджень.",
+      "files_hint": [
+        "components/drive/drive_core.c",
+        "components/drive/include/drive_core.h",
+        "components/drive/drive_hal.c",
+        "test/host/test_drive.c",
+        "docs/features/phase3-crsf/acceptance.md"
+      ],
+      "file": "docs/features/phase3-crsf/tasks/t18-latency-diagnostics.md",
+      "status": "todo"
     }
   ]
 }

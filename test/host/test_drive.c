@@ -824,6 +824,31 @@ static void test_failsafe_exit_window(void)
     CHECK(o.has_state_request && o.state_request == APP_STATE_DISARMED);
 }
 
+// T13 (review F6): вік кадру й тривалість звʼязку — беззнакова різниця; ≥ 2^31 мс не стає «відʼємною».
+static void test_link_age_unsigned(void)
+{
+    drive_ctl_t c; drive_ctl_out_t o;
+    const uint32_t big = 0x80000000u + 10u;
+    // ARMED з пульта, далі кадрів немає ≥ 2^31 мс: це втрата звʼязку, а не «живий».
+    drive_ctl_init(&c);
+    go_rc(&c, APP_STATE_ARMED, 1000, snap(8000, 1000), rc_snap(1000, 1), DRIVE_REQ_NONE, 0, 0);
+    o = go_rc(&c, APP_STATE_ARMED, 1000 + big, snap(8000, 1000 + big), rc_snap(1000, 1), DRIVE_REQ_NONE, 0, 0);
+    CHECK(!c.link_alive);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_FAILSAFE && o.failsafe_cause == APP_FS_LINK_LOST);
+    check_off(o.out);
+    // Звʼязок живий ≥ 2^31 мс від першого кадру після втрати: вихід із FAILSAFE не блокується «стабілізацією».
+    failsafe_link_lost_then_back(&c, 3000, SW_DIS);
+    uint32_t now = 3000 + big;
+    o = go_fs(&c, now, snap(8000, now), rc_raw(now - 10, 99, NEUT, NEUT, SW_DIS), APP_FS_LINK_LOST);
+    CHECK(c.link_alive && c.link_since_ms == 3000);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_DISARMED && (o.events & DRIVE_EVT_FAILSAFE_EXIT));
+    // Звичайне переповнення лічильника мс (now менше за мітку числом, але новіший на 20 мс) — звʼязок живий.
+    drive_ctl_init(&c);
+    go_rc(&c, APP_STATE_ARMED, 0xFFFFFFF0u, snap(8000, 0xFFFFFFF0u), rc_snap(0xFFFFFFF0u, 1), DRIVE_REQ_NONE, 0, 0);
+    o = go_rc(&c, APP_STATE_ARMED, 4, snap(8000, 4), rc_snap(0xFFFFFFF0u, 1), DRIVE_REQ_NONE, 0, 0);
+    CHECK(c.link_alive && !o.has_state_request);
+}
+
 static void test_failsafe_exit_switch(void)
 {
     drive_ctl_t c; drive_ctl_out_t o;
@@ -975,6 +1000,7 @@ int main(void)
     test_stby_only_in_armed_remote();
     test_failsafe_exit_window();
     test_failsafe_exit_switch();
+    test_link_age_unsigned();
     test_failsafe_voltage_never_exits();
     test_failsafe_exit_texts();
     test_matrix_126();

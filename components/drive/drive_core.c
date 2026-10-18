@@ -154,7 +154,7 @@ drive_fsx_t drive_failsafe_exit_state(const drive_ctl_t *c, app_failsafe_cause_t
     if (!c->remote_active || !c->link_alive) {
         return DRIVE_FSX_NO_LINK;
     }
-    if ((int32_t)(now_ms - c->link_since_ms) < (int32_t)DRIVE_LINK_STABLE_MS) {
+    if ((uint32_t)(now_ms - c->link_since_ms) < DRIVE_LINK_STABLE_MS) {   // беззнаково: без зламу через 2^31 мс
         return DRIVE_FSX_STABILIZING;
     }
     if (intent->sw != CRSF_SW_DISARM) {
@@ -192,7 +192,8 @@ static void update_link(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_
     if (!c->remote_active) {
         return;
     }
-    bool alive = rc->have_frame && (int32_t)(in->now_ms - rc->t_ms) <= (int32_t)DRIVE_LINK_TIMEOUT_MS;
+    // Вік кадру беззнаковий (control бере now після знімка, тож now ≥ t_ms): переповнення мс не впливає (sad.md §4).
+    bool alive = rc->have_frame && (uint32_t)(in->now_ms - rc->t_ms) <= DRIVE_LINK_TIMEOUT_MS;
     if (alive && !c->link_alive) {
         c->link_alive = true;
         c->sw_base = CRSF_SW_UNKNOWN;
