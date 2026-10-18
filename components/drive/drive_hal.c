@@ -205,6 +205,13 @@ static void log_stop(const drive_ctl_out_t *o, app_state_t prev)
             ESP_LOGI(TAG, "роззброєно — мотори вимкнено");
         }
         break;
+    case DRIVE_STOP_LINK_LOST:
+        ESP_LOGW(TAG, "%s — мотори вимкнено, FAILSAFE (причина: втрата звʼязку)", drive_stop_text(o->stop));
+        break;
+    case DRIVE_STOP_REMOTE_APPEARED:
+    case DRIVE_STOP_SWITCH_DISARM:
+        ESP_LOGI(TAG, "%s", drive_stop_text(o->stop));
+        break;
     case DRIVE_STOP_NONE:
         break;
     }

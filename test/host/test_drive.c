@@ -393,6 +393,177 @@ static void test_future_snapshot_and_texts(void)
     CHECK(strstr(b, "перехід") != NULL);
 }
 
+// ---------- phase3-crsf T4: стендовий режим, таймер звʼязку, відмова «керує пульт» ----------
+
+// Знімок приймача: кадр прийнято в момент t_ms, канали за замовчуванням у спокої, тумблер у DISARM.
+static crsf_snapshot_t rc_snap(uint32_t t_ms, uint32_t seq)
+{
+    crsf_snapshot_t r;
+    memset(&r, 0, sizeof(r));
+    r.have_frame = true;
+    r.seq = seq;
+    r.t_ms = t_ms;
+    for (int i = 0; i < CRSF_CHANNELS; i++) r.ch[i] = CRSF_RAW_CENTER;
+    r.ch[CRSF_IDX_ARM] = 191;
+    return r;
+}
+
+static drive_ctl_out_t go_rc(drive_ctl_t *c, app_state_t st, uint32_t now, battery_snapshot_t b, crsf_snapshot_t rc,
+                             drive_req_kind_t k, float thr, float steer)
+{
+    drive_ctl_out_t o;
+    drive_ctl_in_t in = in_for(st, now, b, k, thr, steer);
+    in.rc = rc;
+    drive_ctl_step(c, &in, &o);
+    return o;
+}
+
+static void test_bench_without_frames_is_phase1(void)
+{
+    drive_ctl_t c; drive_ctl_out_t o;
+    drive_ctl_init(&c);
+    CHECK(!c.remote_active);
+    // Без кадрів керування як у фазі 1: arm і drive приймаються з консолі (AC-13).
+    o = go(&c, APP_STATE_DISARMED, 1000, snap(8000, 1000), DRIVE_REQ_ARM, 0, 0);
+    CHECK(o.accepted && o.state_request == APP_STATE_ARMED);
+    o = go(&c, APP_STATE_ARMED, 1020, snap(8000, 1020), DRIVE_REQ_DRIVE, 0.3f, 0.0f);
+    CHECK(o.accepted && o.out.stby == 1 && o.left_permille == 300);
+    // Спливання вікна 2 с — як у фазі 1.
+    o = go(&c, APP_STATE_ARMED, 3020, snap(8000, 3000), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.stop == DRIVE_STOP_WINDOW_EXPIRED && o.state_request == APP_STATE_DISARMED);
+    CHECK(!c.remote_active && o.events == 0);
+}
+
+static void test_bench_ends_on_first_frame(void)
+{
+    drive_ctl_t c; drive_ctl_out_t o;
+    drive_ctl_init(&c);
+    go(&c, APP_STATE_ARMED, 1000, snap(8000, 1000), DRIVE_REQ_DRIVE, 0.3f, 0.0f);   // консоль їде
+    // Перший кадр пульта: мотори зупинено, DISARMED, стенд закінчено назавжди (AC-14).
+    o = go_rc(&c, APP_STATE_ARMED, 1100, snap(8000, 1100), rc_snap(1100, 1), DRIVE_REQ_NONE, 0, 0);
+    check_off(o.out);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_DISARMED);
+    CHECK(o.stop == DRIVE_STOP_REMOTE_APPEARED);
+    CHECK(o.events & DRIVE_EVT_REMOTE_APPEARED);
+    CHECK(!(o.events & DRIVE_EVT_LINK_RESTORED));      // перша поява — не «відновлення»
+    CHECK(c.remote_active && c.link_alive);
+    // Стенд не повертається, навіть коли знімок порожній (приймач вимкнено): remote_active лишається.
+    o = go(&c, APP_STATE_DISARMED, 3000, snap(8000, 3000), DRIVE_REQ_NONE, 0, 0);
+    CHECK(c.remote_active);
+    // ARMED без руху з консолі, перший кадр: теж роззброює.
+    drive_ctl_init(&c);
+    o = go_rc(&c, APP_STATE_ARMED, 1000, snap(8000, 1000), rc_snap(1000, 1), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_DISARMED && o.stop == DRIVE_STOP_REMOTE_APPEARED);
+    // DISARMED: стенд закінчується без переходу.
+    drive_ctl_init(&c);
+    o = go_rc(&c, APP_STATE_DISARMED, 1000, snap(8000, 1000), rc_snap(1000, 1), DRIVE_REQ_NONE, 0, 0);
+    CHECK(!o.has_state_request && c.remote_active && (o.events & DRIVE_EVT_REMOTE_APPEARED));
+    // FAILSAFE у стенді (відсічка), перший кадр: стенд закінчується, стан без змін.
+    drive_ctl_init(&c);
+    o = go_rc(&c, APP_STATE_FAILSAFE, 1000, snap(8000, 1000), rc_snap(1000, 1), DRIVE_REQ_NONE, 0, 0);
+    CHECK(c.remote_active && !o.has_state_request);
+}
+
+static void test_console_refused_after_bench(void)
+{
+    drive_ctl_t c; drive_ctl_out_t o;
+    drive_ctl_init(&c);
+    // Стенд закінчився (є кадр), звʼязок живий.
+    go_rc(&c, APP_STATE_DISARMED, 1000, snap(8000, 1000), rc_snap(1000, 1), DRIVE_REQ_NONE, 0, 0);
+    o = go_rc(&c, APP_STATE_DISARMED, 1020, snap(8000, 1020), rc_snap(1010, 2), DRIVE_REQ_ARM, 0, 0);
+    CHECK(!o.accepted && o.reason == DRIVE_REASON_REMOTE_ONLY && !o.has_state_request);
+    check_off(o.out);
+    // Стенд закінчено, звʼязок втрачено (>500 мс): консоль так само відхилена (AC-07, AC-15).
+    o = go_rc(&c, APP_STATE_DISARMED, 2000, snap(8000, 2000), rc_snap(1010, 2), DRIVE_REQ_ARM, 0, 0);
+    CHECK(!o.accepted && o.reason == DRIVE_REASON_REMOTE_ONLY);
+    // drive у ARMED у режимі «пульт»: клас 3, а не виконання.
+    drive_ctl_init(&c);
+    go_rc(&c, APP_STATE_DISARMED, 1000, snap(8000, 1000), rc_snap(1000, 1), DRIVE_REQ_NONE, 0, 0);
+    o = go_rc(&c, APP_STATE_ARMED, 1020, snap(8000, 1020), rc_snap(1010, 2), DRIVE_REQ_DRIVE, 0.3f, 0.0f);
+    CHECK(!o.accepted && o.reason == DRIVE_REASON_REMOTE_ONLY);
+    CHECK(o.left_permille == 0 && o.right_permille == 0);
+    // Порядок: спершу стан (клас 1), потім «керує пульт» (клас 3).
+    o = go_rc(&c, APP_STATE_ARMED, 1040, snap(8000, 1040), rc_snap(1030, 3), DRIVE_REQ_ARM, 0, 0);
+    CHECK(o.reason == DRIVE_REASON_NOT_DISARMED);
+    o = go_rc(&c, APP_STATE_DISARMED, 1060, snap(8000, 1060), rc_snap(1050, 4), DRIVE_REQ_DRIVE, 0.1f, 0.0f);
+    CHECK(o.reason == DRIVE_REASON_NOT_ARMED);
+    // disarm працює завжди (AC-15): ARMED → DISARMED.
+    o = go_rc(&c, APP_STATE_ARMED, 1080, snap(8000, 1080), rc_snap(1070, 5), DRIVE_REQ_DISARM, 0, 0);
+    CHECK(o.accepted && o.state_request == APP_STATE_DISARMED && o.stop == DRIVE_STOP_DISARM);
+    // Текст відмови називає пульт і перезапуск.
+    char b[96];                                           // як console_motor_reply_t.text
+    drive_reason_text(DRIVE_REASON_REMOTE_ONLY, 0, b, sizeof b);
+    CHECK(strstr(b, "пульт") != NULL && strstr(b, "перезапуск") != NULL);
+    CHECK(strlen(b) < sizeof b - 1);                      // не обрізано
+}
+
+static void test_link_timer(void)
+{
+    drive_ctl_t c; drive_ctl_out_t o;
+    battery_snapshot_t b = snap(8000, 0);
+    // ARMED з пульта (звʼязок є), потім кадри припиняються.
+    drive_ctl_init(&c);
+    go_rc(&c, APP_STATE_ARMED, 1000, b, rc_snap(1000, 1), DRIVE_REQ_NONE, 0, 0);
+    b = snap(8000, 1400);
+    o = go_rc(&c, APP_STATE_ARMED, 1500, b, rc_snap(1000, 1), DRIVE_REQ_NONE, 0, 0);     // рівно 500 мс — ще живий
+    CHECK(c.link_alive && !o.has_state_request);
+    b = snap(8000, 1500);
+    o = go_rc(&c, APP_STATE_ARMED, 1501, b, rc_snap(1000, 1), DRIVE_REQ_NONE, 0, 0);     // 501 мс — втрата
+    CHECK(!c.link_alive);
+    check_off(o.out);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_FAILSAFE);
+    CHECK(o.failsafe_cause == APP_FS_LINK_LOST);
+    CHECK(o.stop == DRIVE_STOP_LINK_LOST);
+    CHECK(o.events & DRIVE_EVT_LINK_LOST);
+    CHECK(c.sw_base == CRSF_SW_UNKNOWN);                                                 // база тумблера скинута
+    // Перехід у FAILSAFE один: наступний такт у FAILSAFE нових подій втрати не дає.
+    o = go_rc(&c, APP_STATE_FAILSAFE, 1521, b, rc_snap(1000, 1), DRIVE_REQ_NONE, 0, 0);
+    CHECK(!(o.events & DRIVE_EVT_LINK_LOST));
+    check_off(o.out);
+
+    // Кадри не оновлюються (мітка стара), хоч лічильники службових кадрів ростуть: знімок з тією ж міткою й seq.
+    drive_ctl_init(&c);
+    crsf_snapshot_t r = rc_snap(1000, 1);
+    go_rc(&c, APP_STATE_ARMED, 1000, snap(8000, 1000), r, DRIVE_REQ_NONE, 0, 0);
+    r.cnt.other = 300;                                                                   // приймач шле статистику
+    o = go_rc(&c, APP_STATE_ARMED, 1600, snap(8000, 1600), r, DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.state_request == APP_STATE_FAILSAFE && o.failsafe_cause == APP_FS_LINK_LOST);
+
+    // Втрата в DISARMED: без переходу, лише подія, база скинута (AC-07).
+    drive_ctl_init(&c);
+    go_rc(&c, APP_STATE_DISARMED, 1000, snap(8000, 1000), rc_snap(1000, 1), DRIVE_REQ_NONE, 0, 0);
+    o = go_rc(&c, APP_STATE_DISARMED, 1600, snap(8000, 1600), rc_snap(1000, 1), DRIVE_REQ_NONE, 0, 0);
+    CHECK(!o.has_state_request && (o.events & DRIVE_EVT_LINK_LOST) && !c.link_alive);
+    check_off(o.out);
+    // Відновлення: подія один раз, початок стабільного звʼязку = мітка першого кадру.
+    o = go_rc(&c, APP_STATE_DISARMED, 3000, snap(8000, 3000), rc_snap(2990, 40), DRIVE_REQ_NONE, 0, 0);
+    CHECK((o.events & DRIVE_EVT_LINK_RESTORED) && c.link_alive && c.link_since_ms == 2990);
+    o = go_rc(&c, APP_STATE_DISARMED, 3020, snap(8000, 3020), rc_snap(3010, 42), DRIVE_REQ_NONE, 0, 0);
+    CHECK(!(o.events & DRIVE_EVT_LINK_RESTORED) && c.link_since_ms == 2990);
+
+    // Відсічка по напрузі в ARMED тепер несе причину «напруга» (ADR-0002).
+    drive_ctl_init(&c);
+    o = go_rc(&c, APP_STATE_ARMED, 1000, snap(5900, 1000), rc_snap(990, 1), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.state_request == APP_STATE_FAILSAFE && o.failsafe_cause == APP_FS_VOLTAGE && o.stop == DRIVE_STOP_LOW_VOLTAGE);
+    // Одночасно втрата звʼязку й низька напруга: відсічка має перевагу.
+    drive_ctl_init(&c);
+    go_rc(&c, APP_STATE_ARMED, 1000, snap(8000, 1000), rc_snap(1000, 1), DRIVE_REQ_NONE, 0, 0);
+    o = go_rc(&c, APP_STATE_ARMED, 1700, snap(5900, 1700), rc_snap(1000, 1), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.failsafe_cause == APP_FS_VOLTAGE && o.stop == DRIVE_STOP_LOW_VOLTAGE);
+    // Старий стенд: відсічка в русі без кадрів теж «напруга».
+    drive_ctl_init(&c);
+    go(&c, APP_STATE_ARMED, 1000, snap(8000, 1000), DRIVE_REQ_DRIVE, 0.3f, 0.0f);
+    o = go(&c, APP_STATE_ARMED, 1100, snap(5999, 1100), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.failsafe_cause == APP_FS_VOLTAGE);
+}
+
+static void test_link_stop_texts(void)
+{
+    CHECK(strstr(drive_stop_text(DRIVE_STOP_LINK_LOST), "звʼязку") != NULL);
+    CHECK(strstr(drive_stop_text(DRIVE_STOP_REMOTE_APPEARED), "пульт") != NULL);
+    CHECK(strstr(drive_stop_text(DRIVE_STOP_SWITCH_DISARM), "тумблер") != NULL);
+}
+
 int main(void)
 {
     test_mix();
@@ -411,5 +582,10 @@ int main(void)
     test_reason_text();
     test_stop_text_and_disarm_min();
     test_future_snapshot_and_texts();
+    test_bench_without_frames_is_phase1();
+    test_bench_ends_on_first_frame();
+    test_console_refused_after_bench();
+    test_link_timer();
+    test_link_stop_texts();
     return test_summary();
 }

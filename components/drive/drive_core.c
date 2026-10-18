@@ -68,6 +68,10 @@ void drive_ctl_init(drive_ctl_t *c)
     c->left_permille = 0;
     c->right_permille = 0;
     c->min_mv = 0;
+    c->remote_active = false;
+    c->link_alive = false;
+    c->link_since_ms = 0;
+    c->sw_base = CRSF_SW_UNKNOWN;
 }
 
 static int16_t signed_pm(drive_side_t s)
@@ -94,11 +98,45 @@ static bool in_range(float x)
     return x == x && x >= -1.0f && x <= 1.0f;
 }
 
+// Звʼязок з пультом (ADR-0001, ADR-0003): стендовий режим закінчується першим валідним кадром каналів; далі звʼязок
+// живий, доки від мітки останнього кадру минуло не більше DRIVE_LINK_TIMEOUT_MS. Втрата й відновлення скидають
+// базу тумблера (перший кадр після них лише встановлює її, фронтом не є) і дають подію для журналу.
+static void update_link(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o)
+{
+    const crsf_snapshot_t *rc = &in->rc;
+    bool appeared = false;
+    if (rc->have_frame && !c->remote_active) {
+        c->remote_active = true;
+        c->link_alive = false;
+        c->sw_base = CRSF_SW_UNKNOWN;
+        o->events |= DRIVE_EVT_REMOTE_APPEARED;
+        appeared = true;
+    }
+    if (!c->remote_active) {
+        return;
+    }
+    bool alive = rc->have_frame && (int32_t)(in->now_ms - rc->t_ms) <= (int32_t)DRIVE_LINK_TIMEOUT_MS;
+    if (alive && !c->link_alive) {
+        c->link_alive = true;
+        c->sw_base = CRSF_SW_UNKNOWN;
+        c->link_since_ms = rc->t_ms;
+        if (!appeared) {
+            o->events |= DRIVE_EVT_LINK_RESTORED;
+        }
+    } else if (!alive && c->link_alive) {
+        c->link_alive = false;
+        c->sw_base = CRSF_SW_UNKNOWN;
+        o->events |= DRIVE_EVT_LINK_LOST;
+    }
+}
+
 void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o)
 {
     *o = (drive_ctl_out_t){0};
     o->out = drive_outputs_off();
     o->reason = DRIVE_REASON_NONE;
+
+    update_link(c, in, o);
 
     if (in->state != APP_STATE_ARMED) {
         clear_window(c);  // поза ARMED виходи завжди вимкнені (AC-08)
@@ -123,12 +161,35 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
         clear_window(c);
         o->has_state_request = true;
         o->state_request = APP_STATE_FAILSAFE;
+        o->failsafe_cause = APP_FS_VOLTAGE;
+    }
+
+    // Пульт у ARMED (конституція, п. 7): перший кадр закінчує консольне керування (роззброєння), а втрата звʼязку
+    // понад 500 мс зупиняє ровер і веде у FAILSAFE. Відсічка по напрузі має перевагу над обома.
+    bool stopped = cutoff;
+    if (!cutoff && in->state == APP_STATE_ARMED && c->remote_active) {
+        if (o->events & DRIVE_EVT_REMOTE_APPEARED) {
+            clear_window(c);
+            o->stop = DRIVE_STOP_REMOTE_APPEARED;
+            o->has_state_request = true;
+            o->state_request = APP_STATE_DISARMED;
+            stopped = true;
+        } else if (!c->link_alive) {
+            clear_window(c);
+            o->stop = DRIVE_STOP_LINK_LOST;
+            o->has_state_request = true;
+            o->state_request = APP_STATE_FAILSAFE;
+            o->failsafe_cause = APP_FS_LINK_LOST;
+            stopped = true;
+        }
     }
 
     switch (in->req.kind) {
     case DRIVE_REQ_ARM:
         if (in->state != APP_STATE_DISARMED) {
             o->reason = DRIVE_REASON_NOT_DISARMED;
+        } else if (c->remote_active) {
+            o->reason = DRIVE_REASON_REMOTE_ONLY;   // озброєння після появи пульта лише тумблером (AC-15)
         } else if (!usable) {
             o->reason = DRIVE_REASON_NO_MEASUREMENT;
         } else if (battery_is_below_cutoff(in->battery.mv)) {
@@ -146,7 +207,7 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
             o->min_mv = (usable && in->battery.mv < c->min_mv) ? in->battery.mv : c->min_mv;
         }
         clear_window(c);
-        if (!cutoff) {
+        if (!stopped) {
             o->stop = DRIVE_STOP_DISARM;
             if (in->state == APP_STATE_ARMED) {
                 o->has_state_request = true;
@@ -157,6 +218,8 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
     case DRIVE_REQ_DRIVE:
         if (in->state != APP_STATE_ARMED) {
             o->reason = DRIVE_REASON_NOT_ARMED;
+        } else if (c->remote_active) {
+            o->reason = DRIVE_REASON_REMOTE_ONLY;   // рух після появи пульта лише стіком (AC-15)
         } else if (cutoff) {
             o->reason = usable ? DRIVE_REASON_LOW_VOLTAGE : DRIVE_REASON_NO_MEASUREMENT;
         } else if (!in_range(in->req.throttle) || !in_range(in->req.steer)) {
@@ -219,6 +282,9 @@ void drive_reason_text(drive_reason_t r, uint32_t mv, char *buf, size_t n)
     case DRIVE_REASON_TRANSITION_REFUSED:
         snprintf(buf, n, "перехід стану відхилено автоматом станів");
         break;
+    case DRIVE_REASON_REMOTE_ONLY:
+        snprintf(buf, n, "керує пульт; консоль — після перезапуску без нього");
+        break;
     case DRIVE_REASON_NONE:
         snprintf(buf, n, "відмови немає");
         break;
@@ -232,6 +298,9 @@ const char *drive_stop_text(drive_stop_t s)
     case DRIVE_STOP_LOW_VOLTAGE:    return "напруга нижча за поріг, FAILSAFE";
     case DRIVE_STOP_STALE_VOLTAGE:  return "вимірювання напруги застаріло або відсутнє, FAILSAFE";
     case DRIVE_STOP_DISARM:         return "роззброєно командою disarm";
+    case DRIVE_STOP_LINK_LOST:      return "втрата звʼязку з пультом, FAILSAFE";
+    case DRIVE_STOP_REMOTE_APPEARED:return "з'явився пульт: стенд закінчено, ровер роззброєно";
+    case DRIVE_STOP_SWITCH_DISARM:  return "тумблер пульта в DISARM, ровер роззброєно";
     case DRIVE_STOP_NONE:           break;
     }
     return "немає";

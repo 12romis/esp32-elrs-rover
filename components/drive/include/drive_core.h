@@ -8,6 +8,7 @@
 
 #include "app_state.h"
 #include "battery_core.h"
+#include "crsf_core.h"
 
 // Обмеження потужності борту, проміле від повної (конституція, п. 7: ШІМ ≤ 0.75 до завершення фази 5).
 #define DRIVE_PWM_MAX_PERMILLE 750
@@ -52,7 +53,8 @@ typedef enum {
     DRIVE_REASON_LOW_VOLTAGE,
     DRIVE_REASON_NO_MEASUREMENT,
     DRIVE_REASON_OUT_OF_RANGE,
-    DRIVE_REASON_TRANSITION_REFUSED   // автомат станів відхилив запитаний перехід
+    DRIVE_REASON_TRANSITION_REFUSED,  // автомат станів відхилив запитаний перехід
+    DRIVE_REASON_REMOTE_ONLY          // стендовий режим закінчився: озброєння й рух задає лише пульт (ADR-0003)
 } drive_reason_t;
 
 typedef enum {
@@ -60,7 +62,10 @@ typedef enum {
     DRIVE_STOP_WINDOW_EXPIRED,
     DRIVE_STOP_LOW_VOLTAGE,
     DRIVE_STOP_STALE_VOLTAGE,
-    DRIVE_STOP_DISARM
+    DRIVE_STOP_DISARM,
+    DRIVE_STOP_LINK_LOST,        // втрата звʼязку з пультом у ARMED (phase3-crsf)
+    DRIVE_STOP_REMOTE_APPEARED,  // перший кадр пульта в стенді закінчив консольне керування
+    DRIVE_STOP_SWITCH_DISARM     // тумблер пульта повернуто в DISARM
 } drive_stop_t;
 
 // Вікно команди руху (спливає саме), мс. Рішення Розробника 2026-10-18.
@@ -73,13 +78,27 @@ typedef struct {
     int16_t left_permille;     // застосовані значення бортів зі знаком
     int16_t right_permille;
     uint32_t min_mv;           // мінімальна напруга за час вікна
+    // --- phase3-crsf ---
+    bool remote_active;        // стендовий режим закінчено: від старту прийшов хоча б один валідний кадр каналів
+    bool link_alive;           // звʼязок живий (останній кадр каналів не старший за 500 мс)
+    uint32_t link_since_ms;    // мітка першого кадру після останньої втрати (початок стабільного звʼязку)
+    crsf_switch_t sw_base;     // попереднє положення тумблера; UNKNOWN на старті й після кожної втрати звʼязку
 } drive_ctl_t;
+
+// Таймер звʼязку: втрата, коли минуло строго більше 500 мс від мітки останнього кадру каналів (конституція, п. 7).
+#define DRIVE_LINK_TIMEOUT_MS 500
+
+// Події кроку для журналу HAL (по одній на подію, не на такт).
+#define DRIVE_EVT_REMOTE_APPEARED (1u << 0)   // перший кадр пульта: стенд закінчено
+#define DRIVE_EVT_LINK_LOST (1u << 1)
+#define DRIVE_EVT_LINK_RESTORED (1u << 2)
 
 typedef struct {
     uint32_t now_ms;
     app_state_t state;
     battery_snapshot_t battery;
     drive_req_t req;
+    crsf_snapshot_t rc;          // знімок приймача (phase3-crsf); без кадрів (have_frame = false) — стендовий режим
 } drive_ctl_in_t;
 
 typedef struct {
@@ -94,6 +113,8 @@ typedef struct {
     int16_t right_permille;
     uint32_t remaining_ms;       // скільки лишилось діяти команді руху (0, якщо команди немає)
     uint32_t min_mv;             // мінімальна напруга за останнє вікно (для журналу, spec OQ-3)
+    app_failsafe_cause_t failsafe_cause;  // причина, якщо state_request == FAILSAFE (ADR-0002)
+    uint32_t events;             // DRIVE_EVT_* для журналу
 } drive_ctl_out_t;
 
 void drive_ctl_init(drive_ctl_t *c);
