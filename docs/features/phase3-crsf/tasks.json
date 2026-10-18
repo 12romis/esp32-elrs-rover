@@ -62,7 +62,7 @@
         "test/host/test_app_state.c"
       ],
       "file": "docs/features/phase3-crsf/tasks/t3-app-state-failsafe-cause.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T4",

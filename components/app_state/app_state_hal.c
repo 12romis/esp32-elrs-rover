@@ -43,6 +43,32 @@ app_sm_result_t app_state_request(app_state_t to)
     return r;
 }
 
+app_sm_result_t app_state_enter_failsafe(app_failsafe_cause_t cause)
+{
+    xSemaphoreTake(m_state, portMAX_DELAY);
+    app_state_t from = app_sm_state(&s_sm);
+    app_failsafe_cause_t before = app_sm_failsafe_cause(&s_sm);
+    uint32_t t_ms = (uint32_t)(esp_timer_get_time() / 1000);
+    app_sm_result_t r = app_sm_enter_failsafe(&s_sm, cause, t_ms);
+    app_failsafe_cause_t after = app_sm_failsafe_cause(&s_sm);
+    xSemaphoreGive(m_state);
+    if (r == APP_SM_OK && from != APP_STATE_FAILSAFE) {
+        ESP_LOGI(TAG, "перехід: %s -> FAILSAFE, причина: %s", app_state_name(from), app_failsafe_cause_name(after));
+    } else if (r == APP_SM_OK && after != before) {
+        ESP_LOGW(TAG, "причина FAILSAFE змінилась: %s -> %s; вихід лише апаратним скиданням",
+                 app_failsafe_cause_name(before), app_failsafe_cause_name(after));
+    }
+    return r;
+}
+
+app_failsafe_cause_t app_state_failsafe_cause(void)
+{
+    xSemaphoreTake(m_state, portMAX_DELAY);
+    app_failsafe_cause_t c = app_sm_failsafe_cause(&s_sm);
+    xSemaphoreGive(m_state);
+    return c;
+}
+
 app_state_t app_state_get(void)
 {
     xSemaphoreTake(m_state, portMAX_DELAY);

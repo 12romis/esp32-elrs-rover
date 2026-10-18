@@ -14,7 +14,7 @@ static void capture_log(const char *msg)
     g_log[sizeof(g_log) - 1] = '\0';
 }
 
-// Очікувані 10 дозволених пар (spec AC-06).
+// Очікувані 11 дозволених пар (фаза 0: 10; фаза 3: + FAILSAFE → DISARMED, ADR-0002).
 static const struct { app_state_t from, to; } k_allowed[] = {
     {APP_STATE_BOOT, APP_STATE_SELFTEST},
     {APP_STATE_SELFTEST, APP_STATE_DISARMED},
@@ -26,6 +26,7 @@ static const struct { app_state_t from, to; } k_allowed[] = {
     {APP_STATE_ARMED, APP_STATE_FAILSAFE},
     {APP_STATE_OBSTACLE_HOLD, APP_STATE_ARMED},
     {APP_STATE_OBSTACLE_HOLD, APP_STATE_FAILSAFE},
+    {APP_STATE_FAILSAFE, APP_STATE_DISARMED},
 };
 #define N_ALLOWED (sizeof(k_allowed) / sizeof(k_allowed[0]))
 
@@ -58,6 +59,8 @@ static void test_all_49_pairs(void)
         for (int t = 0; t < APP_STATE_COUNT; t++) {
             app_sm_t sm;
             sm_at(&sm, (app_state_t)f);
+            // Пара FAILSAFE → DISARMED дозволена лише з причиною «втрата зв'язку» (охорона, ADR-0002).
+            if (f == APP_STATE_FAILSAFE) sm.failsafe_cause = APP_FS_LINK_LOST;
             g_log_calls = 0;
             app_sm_result_t r = app_sm_request(&sm, (app_state_t)t, 1);
             bool expect = in_expected((app_state_t)f, (app_state_t)t);
@@ -78,8 +81,8 @@ static void test_all_49_pairs(void)
     }
     CHECK(allowed + refused == 49);
     printf("ПОКРИТТЯ пар станів автомата: %d з 49\n", allowed + refused);
-    CHECK(allowed == 10);
-    CHECK(refused == 39);
+    CHECK(allowed == 11);
+    CHECK(refused == 38);
 }
 
 static void test_boot_to_armed_refused(void)
@@ -102,10 +105,11 @@ static void test_armed_reachable_only_from_disarmed_and_hold(void)
     }
 }
 
-static void test_no_exits_from_failsafe_and_fault(void)
+static void test_exits_from_failsafe_and_fault(void)
 {
+    // З FAILSAFE єдиний вихід — DISARMED (і той лише за охороною причини); з FAULT виходів немає.
     for (int t = 0; t < APP_STATE_COUNT; t++) {
-        CHECK(!app_sm_is_allowed(APP_STATE_FAILSAFE, (app_state_t)t));
+        CHECK(app_sm_is_allowed(APP_STATE_FAILSAFE, (app_state_t)t) == (t == APP_STATE_DISARMED));
         CHECK(!app_sm_is_allowed(APP_STATE_FAULT, (app_state_t)t));
     }
     CHECK(!app_sm_is_allowed(APP_STATE_OBSTACLE_HOLD, APP_STATE_DISARMED));
@@ -143,13 +147,80 @@ static void test_history_overflow_keeps_last_16(void)
     CHECK(app_sm_history_get(&sm, 15, &e) && e.t_ms == 20); // найновіший — 20-й
 }
 
+// ---------- Причина FAILSAFE й охорона виходу (ADR-0002; spec AC-08, AC-09, AC-17) ----------
+
+static void test_failsafe_cause_and_guard(void)
+{
+    app_sm_t sm;
+
+    // Вхід у FAILSAFE через зв'язок: причина запам'ятовується, вихід у DISARMED дозволений.
+    sm_at(&sm, APP_STATE_ARMED);
+    CHECK(sm.failsafe_cause == APP_FS_NONE);
+    CHECK(app_sm_enter_failsafe(&sm, APP_FS_LINK_LOST, 100) == APP_SM_OK);
+    CHECK(app_sm_state(&sm) == APP_STATE_FAILSAFE);
+    CHECK(app_sm_failsafe_cause(&sm) == APP_FS_LINK_LOST);
+    CHECK(app_sm_history_count(&sm) == 1);
+    CHECK(app_sm_request(&sm, APP_STATE_DISARMED, 200) == APP_SM_OK);
+    CHECK(app_sm_state(&sm) == APP_STATE_DISARMED);
+    CHECK(app_sm_failsafe_cause(&sm) == APP_FS_NONE);          // причина скинута після виходу
+
+    // Вихід після відсічки по напрузі відхилено, стан незмінний.
+    sm_at(&sm, APP_STATE_ARMED);
+    CHECK(app_sm_enter_failsafe(&sm, APP_FS_VOLTAGE, 100) == APP_SM_OK);
+    g_log_calls = 0;
+    CHECK(app_sm_request(&sm, APP_STATE_DISARMED, 200) == APP_SM_REFUSED);
+    CHECK(app_sm_state(&sm) == APP_STATE_FAILSAFE);
+    CHECK(g_log_calls == 1);                                    // відмова залогована
+    CHECK(app_sm_failsafe_cause(&sm) == APP_FS_VOLTAGE);
+
+    // Відсічка під час FAILSAFE через зв'язок підвищує причину назавжди, запису в історію немає.
+    sm_at(&sm, APP_STATE_ARMED);
+    CHECK(app_sm_enter_failsafe(&sm, APP_FS_LINK_LOST, 100) == APP_SM_OK);
+    size_t hist = app_sm_history_count(&sm);
+    CHECK(app_sm_enter_failsafe(&sm, APP_FS_VOLTAGE, 150) == APP_SM_OK);
+    CHECK(app_sm_state(&sm) == APP_STATE_FAILSAFE);
+    CHECK(app_sm_failsafe_cause(&sm) == APP_FS_VOLTAGE);
+    CHECK(app_sm_history_count(&sm) == hist);
+    CHECK(app_sm_request(&sm, APP_STATE_DISARMED, 200) == APP_SM_REFUSED);
+
+    // «Втрата зв'язку» не знижує «напруга».
+    CHECK(app_sm_enter_failsafe(&sm, APP_FS_LINK_LOST, 300) == APP_SM_OK);
+    CHECK(app_sm_failsafe_cause(&sm) == APP_FS_VOLTAGE);
+
+    // Старий запит FAILSAFE без причини трактується як «напруга» (безпечний бік).
+    sm_at(&sm, APP_STATE_DISARMED);
+    CHECK(app_sm_request(&sm, APP_STATE_FAILSAFE, 10) == APP_SM_OK);
+    CHECK(app_sm_failsafe_cause(&sm) == APP_FS_VOLTAGE);
+    CHECK(app_sm_request(&sm, APP_STATE_DISARMED, 20) == APP_SM_REFUSED);
+
+    // Вхід у FAILSAFE з недозволеного стану відхилено, причина не ставиться.
+    sm_at(&sm, APP_STATE_BOOT);
+    CHECK(app_sm_enter_failsafe(&sm, APP_FS_LINK_LOST, 10) == APP_SM_REFUSED);
+    CHECK(app_sm_state(&sm) == APP_STATE_BOOT);
+    CHECK(app_sm_failsafe_cause(&sm) == APP_FS_NONE);
+
+    // Повторний цикл: після виходу новий FAILSAFE ставить нову причину.
+    sm_at(&sm, APP_STATE_ARMED);
+    CHECK(app_sm_enter_failsafe(&sm, APP_FS_LINK_LOST, 1) == APP_SM_OK);
+    CHECK(app_sm_request(&sm, APP_STATE_DISARMED, 2) == APP_SM_OK);
+    CHECK(app_sm_request(&sm, APP_STATE_ARMED, 3) == APP_SM_OK);
+    CHECK(app_sm_enter_failsafe(&sm, APP_FS_VOLTAGE, 4) == APP_SM_OK);
+    CHECK(app_sm_failsafe_cause(&sm) == APP_FS_VOLTAGE);
+
+    // Імена причин для журналу й status.
+    CHECK(strcmp(app_failsafe_cause_name(APP_FS_LINK_LOST), "втрата звʼязку") == 0);
+    CHECK(strcmp(app_failsafe_cause_name(APP_FS_VOLTAGE), "напруга") == 0);
+    CHECK(strcmp(app_failsafe_cause_name(APP_FS_NONE), "немає") == 0);
+}
+
 int main(void)
 {
     test_names();
     test_all_49_pairs();
     test_boot_to_armed_refused();
     test_armed_reachable_only_from_disarmed_and_hold();
-    test_no_exits_from_failsafe_and_fault();
+    test_exits_from_failsafe_and_fault();
+    test_failsafe_cause_and_guard();
     test_boot_sequence_history();
     test_history_overflow_keeps_last_16();
     return test_summary();
