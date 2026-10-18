@@ -7,6 +7,7 @@
 #include "app_state_hal.h"
 #include "battery_hal.h"
 #include "console.h"
+#include "crsf_hal.h"
 #include "drive_hal.h"
 #include "ioexp_hal.h"
 #include "esp_log.h"
@@ -129,6 +130,12 @@ void app_main(void)
     esp_err_t bat = battery_start();
     // control стартує до storage_init, тож disarm працює і в BOOT, якщо сховище не піднялося.
     esp_err_t ctl = drv == ESP_OK ? drive_start() : drv;
+    // Приймач пульта (ADR-0001): після control, щоб знімок читався з першого такту. Збій UART не зупиняє старт: без
+    // кадрів ровер лишається в стендовому режимі, консольні arm і drive працюють як у фазі 1.
+    esp_err_t rcv = crsf_start();
+    if (rcv != ESP_OK) {
+        ESP_LOGW(TAG, "приймач CRSF не стартував (%s) — стендовий режим, керування лише з консолі", esp_err_to_name(rcv));
+    }
     esp_err_t ui = ui_start();  // ui лише читає стан і борти, мотори від неї не залежать
     storage_status_t storage = storage_init();
 

@@ -16,6 +16,14 @@ typedef struct {
     drive_stop_t last_stop;   // остання зупинка моторів (DRIVE_STOP_NONE — зупинок ще не було)
     uint32_t last_stop_min_mv;  // мінімальна напруга за час руху (0 — невідома)
     uint32_t last_stop_t_ms;  // час зупинки, мс від старту
+    // --- phase3-crsf: стан керування з пульта для status (знімок останнього такту control) ---
+    bool remote_active;       // стендовий режим закінчено
+    bool link_alive;
+    uint32_t since_last_ms;   // час від останнього кадру каналів (лише якщо remote_active)
+    crsf_intent_t intent;     // тяга, поворот, тумблер після мертвої зони
+    drive_block_t arm_block;  // що блокує озброєння з пульта зараз (DRIVE_BLOCK_NONE — можна)
+    app_failsafe_cause_t failsafe_cause;
+    drive_fsx_t fsx;          // чого бракує для виходу з FAILSAFE
 } drive_status_t;
 
 typedef struct {
@@ -28,6 +36,9 @@ typedef struct {
     bool has_state_request;     // control запитав перехід
     app_state_t state_request;
     drive_stop_t stop;
+    app_failsafe_cause_t failsafe_cause;  // причина поточного FAILSAFE (для пояснення disarm)
+    drive_fsx_t fsx;                      // чого бракує для виходу з FAILSAFE
+    bool switch_arm;                      // тумблер пульта в ARM
 } drive_reply_t;
 
 // Лінії моторів → вимкнений стан (STBY низька, ШІМ 0, DIR 0/0). Перший виклик після app_state_hal_init.
