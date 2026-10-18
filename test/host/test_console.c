@@ -307,6 +307,153 @@ static void test_last_stop_real_texts(void)
     }
 }
 
+
+// ---------- Фаза 2: light і beep (spec AC-05, AC-06, AC-07, AC-10, AC-13; contracts/cli.md) ----------
+static void test_matrix_63(void)
+{
+    // 9 команд × 7 станів = 63 пари; для light і beep — лише DISARMED і ARMED
+    int pairs = 0;
+    for (int st = 0; st < APP_STATE_COUNT; st++) {
+        app_state_t a = (app_state_t)st;
+        bool ui_ok = (st == APP_STATE_DISARMED || st == APP_STATE_ARMED);
+        CHECK(console_parse("help", a) == CONSOLE_CMD_HELP);
+        CHECK(console_parse("status", a) == CONSOLE_CMD_STATUS);
+        CHECK(console_parse("disarm", a) == CONSOLE_CMD_DISARM);
+        CHECK(console_parse("arm", a) == (st == APP_STATE_DISARMED ? CONSOLE_CMD_ARM : CONSOLE_CMD_DENIED_STATE));
+        CHECK(console_parse("drive 0.3 0", a) == (st == APP_STATE_ARMED ? CONSOLE_CMD_DRIVE : CONSOLE_CMD_DENIED_STATE));
+        CHECK(console_parse("reboot", a) == ((st == APP_STATE_DISARMED || st == APP_STATE_BOOT) ? CONSOLE_CMD_REBOOT : CONSOLE_CMD_DENIED_STATE));
+        CHECK(console_parse("wdt-test", a) == (st == APP_STATE_DISARMED ? CONSOLE_CMD_WDT_TEST : CONSOLE_CMD_DENIED_STATE));
+        CHECK(console_parse("light head on", a) == (ui_ok ? CONSOLE_CMD_LIGHT : CONSOLE_CMD_DENIED_STATE));
+        CHECK(console_parse("beep 1000 100", a) == (ui_ok ? CONSOLE_CMD_BEEP : CONSOLE_CMD_DENIED_STATE));
+        pairs += 9;
+    }
+    CHECK(pairs == 63);
+    printf("ПОКРИТТЯ пар команда × стан: %d з 63\n", pairs);
+    // для клітинок «ні» причина — завжди стан, хай які аргументи
+    CHECK(console_parse("light foo", APP_STATE_FAILSAFE) == CONSOLE_CMD_DENIED_STATE);
+    CHECK(console_parse("beep abc", APP_STATE_BOOT) == CONSOLE_CMD_DENIED_STATE);
+    CHECK(console_parse("light", APP_STATE_FAULT) == CONSOLE_CMD_DENIED_STATE);
+    CHECK(console_parse("beep 1 2 3", APP_STATE_OBSTACLE_HOLD) == CONSOLE_CMD_DENIED_STATE);
+    // дозволений стан: далі синтаксис
+    CHECK(console_parse("light foo", APP_STATE_DISARMED) == CONSOLE_CMD_BAD_ARGS);
+    CHECK(console_parse("beep abc 1", APP_STATE_ARMED) == CONSOLE_CMD_BAD_ARGS);
+    CHECK(console_identify("light head on") == CONSOLE_CMD_LIGHT);
+    CHECK(console_identify("beep 1000 100") == CONSOLE_CMD_BEEP);
+}
+
+static void check_light(const char *line, console_ui_result_t want, ui_channel_t ch, bool on)
+{
+    ui_channel_t c = UI_CH_COUNT;
+    bool o = !on;
+    console_ui_result_t r = console_parse_light(line, &c, &o);
+    CHECK(r == want);
+    if (want == CONSOLE_UI_OK) {
+        CHECK(c == ch && o == on);
+    } else {
+        CHECK(c == UI_CH_COUNT && o == !on);  // при відмові значення не змінюються
+    }
+}
+
+static void test_light_grammar(void)
+{
+    check_light("light head on", CONSOLE_UI_OK, UI_CH_HEAD, true);
+    check_light("light red off", CONSOLE_UI_OK, UI_CH_RED, false);
+    check_light("  light   green   on  ", CONSOLE_UI_OK, UI_CH_GREEN, true);
+    check_light("light", CONSOLE_UI_MISSING_ARGS, UI_CH_COUNT, false);
+    check_light("light head", CONSOLE_UI_MISSING_ARGS, UI_CH_COUNT, false);
+    check_light("light foo on", CONSOLE_UI_UNKNOWN_CHANNEL, UI_CH_COUNT, false);
+    check_light("light head maybe", CONSOLE_UI_UNKNOWN_ACTION, UI_CH_COUNT, false);
+    check_light("light head on now", CONSOLE_UI_EXTRA_ARGS, UI_CH_COUNT, false);
+    check_light("light HEAD on", CONSOLE_UI_UNKNOWN_CHANNEL, UI_CH_COUNT, false);   // регістр має значення
+    check_light("light head ON", CONSOLE_UI_UNKNOWN_ACTION, UI_CH_COUNT, false);
+}
+
+static void check_beep(const char *line, console_ui_result_t want, uint32_t hz, uint32_t dur)
+{
+    uint32_t h = 7, d = 7;
+    console_ui_result_t r = console_parse_beep(line, &h, &d);
+    CHECK(r == want);
+    if (want == CONSOLE_UI_OK) {
+        CHECK(h == hz && d == dur);
+    } else {
+        CHECK(h == 7 && d == 7);
+    }
+}
+
+static void test_beep_grammar(void)
+{
+    check_beep("beep 1000 300", CONSOLE_UI_OK, 1000, 300);
+    check_beep("beep 200 1", CONSOLE_UI_OK, 200, 1);          // межі входять
+    check_beep("beep 5000 2000", CONSOLE_UI_OK, 5000, 2000);
+    check_beep("beep 0001000 0300", CONSOLE_UI_OK, 1000, 300);  // нулі спереду — все одно цифри
+    check_beep("beep 199 100", CONSOLE_UI_RANGE, 0, 0);
+    check_beep("beep 5001 100", CONSOLE_UI_RANGE, 0, 0);
+    check_beep("beep 1000 0", CONSOLE_UI_RANGE, 0, 0);
+    check_beep("beep 1000 2001", CONSOLE_UI_RANGE, 0, 0);
+    check_beep("beep 0 100", CONSOLE_UI_RANGE, 0, 0);
+    check_beep("beep 100000000000 100", CONSOLE_UI_RANGE, 0, 0);  // переповнення читається як «поза діапазоном»
+    check_beep("beep -1 100", CONSOLE_UI_NOT_INTEGER, 0, 0);
+    check_beep("beep +1000 100", CONSOLE_UI_NOT_INTEGER, 0, 0);
+    check_beep("beep 1.5 100", CONSOLE_UI_NOT_INTEGER, 0, 0);
+    check_beep("beep 1e3 100", CONSOLE_UI_NOT_INTEGER, 0, 0);
+    check_beep("beep 0x10 100", CONSOLE_UI_NOT_INTEGER, 0, 0);
+    check_beep("beep 1,5 100", CONSOLE_UI_NOT_INTEGER, 0, 0);
+    check_beep("beep 1000x 100", CONSOLE_UI_NOT_INTEGER, 0, 0);
+    check_beep("beep abc 100", CONSOLE_UI_NOT_INTEGER, 0, 0);
+    check_beep("beep 1000 1.5", CONSOLE_UI_NOT_INTEGER, 0, 0);
+    check_beep("beep", CONSOLE_UI_MISSING_ARGS, 0, 0);
+    check_beep("beep 1000", CONSOLE_UI_MISSING_ARGS, 0, 0);
+    check_beep("beep 1000 100 5", CONSOLE_UI_EXTRA_ARGS, 0, 0);
+    check_beep("beep 99999 abc", CONSOLE_UI_NOT_INTEGER, 0, 0);  // формат важливіший за діапазон
+}
+
+static void test_ui_messages(void)
+{
+    CHECK(strstr(console_help_text(), "light") && strstr(console_help_text(), "beep"));
+    CHECK(strstr(console_help_text(), "head") && strstr(console_help_text(), "on"));
+    char b[400];  // як буфер console_hal
+    console_fmt_denied(b, sizeof b, CONSOLE_CMD_LIGHT, APP_STATE_FAILSAFE);
+    CHECK(strstr(b, "DISARMED") && strstr(b, "ARMED") && strstr(b, "FAILSAFE"));
+    console_fmt_denied(b, sizeof b, CONSOLE_CMD_BEEP, APP_STATE_BOOT);
+    CHECK(strstr(b, "DISARMED") && strstr(b, "BOOT"));
+    // кожна причина названа окремо (AC-05) і з переліком допустимого
+    CHECK(strstr(console_msg_light_error(CONSOLE_UI_MISSING_ARGS), "бракує"));
+    CHECK(strstr(console_msg_light_error(CONSOLE_UI_EXTRA_ARGS), "зайві"));
+    CHECK(strstr(console_msg_light_error(CONSOLE_UI_UNKNOWN_CHANNEL), "канал") && strstr(console_msg_light_error(CONSOLE_UI_UNKNOWN_CHANNEL), "head"));
+    CHECK(strstr(console_msg_light_error(CONSOLE_UI_UNKNOWN_ACTION), "дія") && strstr(console_msg_light_error(CONSOLE_UI_UNKNOWN_ACTION), "off"));
+    for (int r = CONSOLE_UI_MISSING_ARGS; r <= CONSOLE_UI_UNKNOWN_ACTION; r++) {
+        CHECK(strstr(console_msg_light_error((console_ui_result_t)r), "head") && strstr(console_msg_light_error((console_ui_result_t)r), "on"));
+    }
+    CHECK(strcmp(console_msg_light_error(CONSOLE_UI_MISSING_ARGS), console_msg_light_error(CONSOLE_UI_EXTRA_ARGS)) != 0);
+    CHECK(strstr(console_msg_beep_error(CONSOLE_UI_RANGE), "200") && strstr(console_msg_beep_error(CONSOLE_UI_RANGE), "5000"));
+    CHECK(strstr(console_msg_beep_error(CONSOLE_UI_RANGE), "2000") != NULL);
+    CHECK(strlen(console_msg_beep_error(CONSOLE_UI_NOT_INTEGER)) > 10);
+    CHECK(strstr(console_msg_beep_error(CONSOLE_UI_MISSING_ARGS), "бракує"));
+    CHECK(strstr(console_msg_beep_error(CONSOLE_UI_EXTRA_ARGS), "зайві"));
+    console_fmt_ui_denied(b, sizeof b, UI_DENY_STATE, APP_STATE_FAULT);
+    CHECK(strstr(b, "FAULT") && strstr(b, "DISARMED"));
+    console_fmt_ui_denied(b, sizeof b, UI_DENY_MOTION, APP_STATE_ARMED);
+    CHECK(strstr(b, "рух") && strstr(b, "DISARMED"));
+    console_fmt_ui_denied(b, sizeof b, UI_DENY_EXPANDER, APP_STATE_DISARMED);
+    CHECK(strstr(b, "розширювач") && strstr(b, "недоступн") && strstr(b, "перезапуск"));  // текст не обрізано
+    CHECK(strlen(b) < 380);
+    console_fmt_ui_denied(b, sizeof b, UI_DENY_STATE, APP_STATE_FAILSAFE);
+    CHECK(strstr(b, "апаратн") && strlen(b) < 380);
+    console_fmt_ui_denied(b, sizeof b, UI_DENY_RANGE, APP_STATE_DISARMED);
+    CHECK(strstr(b, "200") && strstr(b, "5000"));
+    char s[320];  // як буфер console_hal
+    console_fmt_ui_status(s, sizeof s, true, true, false, true, true, false, true, 250);
+    CHECK(strstr(s, "розширювач: доступний") && strstr(s, "head") && strstr(s, "ввімкнено") && strstr(s, "рух"));
+    CHECK(strstr(s, "індикатор плати: вимкнений") && strstr(s, "зумер: звучить") && strstr(s, "250 мс"));
+    console_fmt_ui_status(s, sizeof s, false, false, false, false, false, true, false, 0);
+    CHECK(strstr(s, "розширювач: недоступний") && strstr(s, "вручну") && strstr(s, "індикатор плати: червоний"));
+    CHECK(strstr(s, "зумер: мовчить") && strstr(s, "0 мс"));
+    console_fmt_ui_status(s, sizeof s, false, true, true, true, true, true, true, 4294967295u);
+    CHECK(strstr(s, "4294967295 мс") != NULL && strlen(s) < 300);  // найдовший варіант вміщається без обрізання
+    console_fmt_ui_status(s, 6, true, true, true, true, true, true, true, 5);  // малий буфер не падає
+    CHECK(strlen(s) <= 5);
+}
+
 int main(void)
 {
     test_line_assembly();
@@ -327,6 +474,10 @@ int main(void)
     test_drive_grammar();
     test_fmt();
     test_new_messages();
+    test_matrix_63();
+    test_light_grammar();
+    test_beep_grammar();
+    test_ui_messages();
     test_last_stop();
     test_last_stop_real_texts();
     return test_summary();

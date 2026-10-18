@@ -41,6 +41,10 @@
 #define PIN_J8_GPIO43    43
 #define PIN_J8_GPIO44    44
 
+// Вбудований RGB-індикатор модуля. Лінія — за документом 02, §2 (у нетлисті плати цього немає: світлодіод усередині модуля).
+// Адресований світлодіод, порядок байтів GRB (виміряно: 2026-10-18, P8, docs/measured.md); драйвер — ADR-0005 phase2-io.
+#define PIN_STATUS_RGB   48
+
 // Біти PCF8574 (U6)
 #define PCF8574_ADDR           0x20   // виміряно P1: 2026-10-16 (docs/measured.md)
 #define IOEXP_BIT_XSHUT_U7     0

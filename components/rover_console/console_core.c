@@ -88,6 +88,8 @@ static console_cmd_t first_word(const char *line, const char **rest)
     if (n == 3 && strncmp(start, "arm", n) == 0) return CONSOLE_CMD_ARM;
     if (n == 6 && strncmp(start, "disarm", n) == 0) return CONSOLE_CMD_DISARM;
     if (n == 5 && strncmp(start, "drive", n) == 0) return CONSOLE_CMD_DRIVE;
+    if (n == 5 && strncmp(start, "light", n) == 0) return CONSOLE_CMD_LIGHT;
+    if (n == 4 && strncmp(start, "beep", n) == 0) return CONSOLE_CMD_BEEP;
     return CONSOLE_CMD_UNKNOWN;
 }
 
@@ -113,6 +115,18 @@ console_cmd_t console_parse(const char *line, app_state_t state)
         }
         return state == APP_STATE_ARMED ? CONSOLE_CMD_DRIVE : CONSOLE_CMD_DENIED_STATE;
     }
+    if (cmd == CONSOLE_CMD_LIGHT || cmd == CONSOLE_CMD_BEEP) {
+        // порядок перевірок: спершу стан (клітинка «ні» завжди відмовляє за станом), потім синтаксис і діапазон
+        if (!ui_core_state_allows(state)) {
+            return CONSOLE_CMD_DENIED_STATE;
+        }
+        ui_channel_t ch;
+        bool on;
+        uint32_t hz, dur;
+        console_ui_result_t r = cmd == CONSOLE_CMD_LIGHT ? console_parse_light(line, &ch, &on)
+                                                          : console_parse_beep(line, &hz, &dur);
+        return r == CONSOLE_UI_OK ? cmd : CONSOLE_CMD_BAD_ARGS;
+    }
     if (has_args) {
         return CONSOLE_CMD_EXTRA_ARGS;
     }
@@ -137,7 +151,9 @@ const char *console_help_text(void)
            "  wdt-test  — перевірка сторожового таймера: навмисне зависання (лише в стані DISARMED)\n"
            "  arm       — озброїти ровер (лише в стані DISARMED за напруги не нижче порога)\n"
            "  disarm    — вимкнути мотори й роззброїти (у будь-якому стані)\n"
-           "  drive <тяга> <поворот> — рух, значення від -1 до 1, діє 2 с (лише в стані ARMED)";
+           "  drive <тяга> <поворот> — рух, значення від -1 до 1, діє 2 с (лише в стані ARMED)\n"
+           "  light <head|red|green> <on|off> — світло: фари, червоний чи зелений задній ліхтар (DISARMED; в ARMED лише head)\n"
+           "  beep <Гц> <мс> — сигнал зумера, цілі числа: 200–5000 Гц і 1–2000 мс (DISARMED і ARMED)";
 }
 
 const char *console_msg_unknown(void)
@@ -271,6 +287,8 @@ void console_fmt_denied(char *buf, size_t n, console_cmd_t cmd, app_state_t stat
     case CONSOLE_CMD_DRIVE:    rule = "Команда drive дозволена лише в стані ARMED"; break;
     case CONSOLE_CMD_REBOOT:   rule = "Команда reboot дозволена лише в станах DISARMED і BOOT"; break;
     case CONSOLE_CMD_WDT_TEST: rule = "Команда wdt-test дозволена лише в стані DISARMED"; break;
+    case CONSOLE_CMD_LIGHT:    rule = "Команда light дозволена лише в станах DISARMED і ARMED"; break;
+    case CONSOLE_CMD_BEEP:     rule = "Команда beep дозволена лише в станах DISARMED і ARMED"; break;
     default:                   rule = "Команду відхилено"; break;
     }
     snprintf(buf, n, "%s, поточний стан: %s.%s", rule, app_state_name(state),
@@ -314,4 +332,187 @@ void console_fmt_last_stop(char *buf, size_t n, const char *reason, uint32_t min
         snprintf(v, sizeof v, "%u мВ", (unsigned)min_mv);
     }
     snprintf(buf, n, "остання зупинка: %s; мінімальна напруга: %s; час: %u мс від старту", reason, v, (unsigned)t_ms);
+}
+
+
+// ---------- Команди світла й зумера ----------
+
+// Розбиває решту рядка після першого слова на токени (до max); повертає кількість слів, яка могла перевищити max.
+static int split_args(const char *line, const char **tok, size_t *len, int max)
+{
+    const char *p = line;
+    while (is_space(*p)) p++;
+    while (*p != '\0' && !is_space(*p)) p++;  // назва команди
+    int count = 0;
+    for (;;) {
+        while (is_space(*p)) p++;
+        if (*p == '\0') {
+            break;
+        }
+        const char *start = p;
+        while (*p != '\0' && !is_space(*p)) p++;
+        if (count < max) {
+            tok[count] = start;
+            len[count] = (size_t)(p - start);
+        }
+        count++;
+    }
+    return count;
+}
+
+static bool tok_is(const char *t, size_t n, const char *word)
+{
+    return strlen(word) == n && strncmp(t, word, n) == 0;
+}
+
+console_ui_result_t console_parse_light(const char *line, ui_channel_t *ch, bool *on)
+{
+    const char *tok[3];
+    size_t len[3];
+    int n = split_args(line, tok, len, 3);
+    if (n < 2) {
+        return CONSOLE_UI_MISSING_ARGS;
+    }
+    if (n > 2) {
+        return CONSOLE_UI_EXTRA_ARGS;
+    }
+    ui_channel_t c;
+    if (tok_is(tok[0], len[0], "head")) {
+        c = UI_CH_HEAD;
+    } else if (tok_is(tok[0], len[0], "red")) {
+        c = UI_CH_RED;
+    } else if (tok_is(tok[0], len[0], "green")) {
+        c = UI_CH_GREEN;
+    } else {
+        return CONSOLE_UI_UNKNOWN_CHANNEL;
+    }
+    bool v;
+    if (tok_is(tok[1], len[1], "on")) {
+        v = true;
+    } else if (tok_is(tok[1], len[1], "off")) {
+        v = false;
+    } else {
+        return CONSOLE_UI_UNKNOWN_ACTION;
+    }
+    *ch = c;
+    *on = v;
+    return CONSOLE_UI_OK;
+}
+
+// Лише десяткові цифри. Значення насичується на 1000000, щоб довгий ввід не переповнив і читався як «поза діапазоном».
+static bool parse_digits(const char *t, size_t n, uint32_t *out)
+{
+    if (n == 0) {
+        return false;
+    }
+    uint32_t v = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (t[i] < '0' || t[i] > '9') {
+            return false;
+        }
+        v = v * 10u + (uint32_t)(t[i] - '0');
+        if (v > 1000000u) {
+            v = 1000000u;
+        }
+    }
+    *out = v;
+    return true;
+}
+
+console_ui_result_t console_parse_beep(const char *line, uint32_t *hz, uint32_t *dur_ms)
+{
+    const char *tok[3];
+    size_t len[3];
+    int n = split_args(line, tok, len, 3);
+    if (n < 2) {
+        return CONSOLE_UI_MISSING_ARGS;
+    }
+    if (n > 2) {
+        return CONSOLE_UI_EXTRA_ARGS;
+    }
+    uint32_t a, b;
+    if (!parse_digits(tok[0], len[0], &a) || !parse_digits(tok[1], len[1], &b)) {
+        return CONSOLE_UI_NOT_INTEGER;  // формат важливіший за діапазон
+    }
+    if (a < UI_BEEP_FREQ_MIN_HZ || a > UI_BEEP_FREQ_MAX_HZ || b < UI_BEEP_DUR_MIN_MS || b > UI_BEEP_DUR_MAX_MS) {
+        return CONSOLE_UI_RANGE;
+    }
+    *hz = a;
+    *dur_ms = b;
+    return CONSOLE_UI_OK;
+}
+
+#define LIGHT_USAGE " Формат: light <канал> <дія>; канали: head (фари), red і green (задні ліхтарі); дії: on, off. Команду відхилено, світло не змінилось."
+
+const char *console_msg_light_error(console_ui_result_t r)
+{
+    switch (r) {
+    case CONSOLE_UI_MISSING_ARGS:
+        return "Команді light бракує аргументів: потрібні канал і дія." LIGHT_USAGE;
+    case CONSOLE_UI_EXTRA_ARGS:
+        return "У команді light зайві аргументи: потрібні лише канал і дія." LIGHT_USAGE;
+    case CONSOLE_UI_UNKNOWN_CHANNEL:
+        return "Невідомий канал (регістр має значення)." LIGHT_USAGE;
+    case CONSOLE_UI_UNKNOWN_ACTION:
+        return "Невідома дія (регістр має значення)." LIGHT_USAGE;
+    case CONSOLE_UI_NOT_INTEGER:
+    case CONSOLE_UI_RANGE:
+    case CONSOLE_UI_OK:
+        break;
+    }
+    return "Команду light відхилено." LIGHT_USAGE;
+}
+
+const char *console_msg_beep_error(console_ui_result_t r)
+{
+    switch (r) {
+    case CONSOLE_UI_NOT_INTEGER:
+        return "Значення має бути цілим числом лише з цифр (без знака, дробу, експоненти, 0x і коми); команду відхилено, звучання не змінилось.";
+    case CONSOLE_UI_RANGE:
+        return "Частота має бути від 200 до 5000 Гц, тривалість — від 1 до 2000 мс (межі входять); команду відхилено, звучання не змінилось.";
+    case CONSOLE_UI_MISSING_ARGS:
+        return "Команді beep бракує аргументів: потрібні рівно два цілих числа, beep <частота_Гц> <тривалість_мс>; команду відхилено.";
+    case CONSOLE_UI_EXTRA_ARGS:
+        return "У команді beep зайві аргументи: потрібні рівно два цілих числа, beep <частота_Гц> <тривалість_мс>; команду відхилено.";
+    case CONSOLE_UI_UNKNOWN_CHANNEL:
+    case CONSOLE_UI_UNKNOWN_ACTION:
+    case CONSOLE_UI_OK:
+        break;
+    }
+    return "Команду beep відхилено: beep <частота_Гц> <тривалість_мс>.";
+}
+
+void console_fmt_ui_denied(char *buf, size_t n, ui_result_t r, app_state_t state)
+{
+    switch (r) {
+    case UI_DENY_STATE:
+        snprintf(buf, n, "Світло й зумер дозволені лише в станах DISARMED і ARMED, поточний стан: %s.%s",
+                 app_state_name(state),
+                 state == APP_STATE_FAILSAFE
+                     ? " Вихід із FAILSAFE можливий лише апаратним скиданням плати або перемиканням живлення."
+                     : "");
+        break;
+    case UI_DENY_MOTION:
+        snprintf(buf, n, "У стані ARMED задні ліхтарі керуються рухом; вручну червоний і зелений можна вмикати лише в стані DISARMED.");
+        break;
+    case UI_DENY_EXPANDER:
+        snprintf(buf, n, "Світло недоступне: розширювач не підтвердився на старті або шина не відповідає; після відновлення зʼєднання світло працює знову, а недоступний на старті розширювач потребує перезапуску плати.");
+        break;
+    case UI_DENY_RANGE:
+        snprintf(buf, n, "Частота має бути від %d до %d Гц, тривалість — від %d до %d мс (межі входять).", UI_BEEP_FREQ_MIN_HZ,
+                 UI_BEEP_FREQ_MAX_HZ, UI_BEEP_DUR_MIN_MS, UI_BEEP_DUR_MAX_MS);
+        break;
+    case UI_OK:
+        snprintf(buf, n, "Готово.");
+        break;
+    }
+}
+
+void console_fmt_ui_status(char *buf, size_t n, bool expander_ok, bool head, bool red, bool green, bool rear_auto,
+                           bool indicator_red, bool buzzer_on, uint32_t remaining_ms)
+{
+    snprintf(buf, n, "розширювач: %s; світло: head %s, red %s, green %s; задні ліхтарі: керує %s; індикатор плати: %s; зумер: %s, залишок: %u мс",
+             expander_ok ? "доступний" : "недоступний", head ? "ввімкнено" : "вимкнено", red ? "ввімкнено" : "вимкнено",
+             green ? "ввімкнено" : "вимкнено", rear_auto ? "рух" : "вручну", indicator_red ? "червоний" : "вимкнений",
+             buzzer_on ? "звучить" : "мовчить", (unsigned)remaining_ms);
 }

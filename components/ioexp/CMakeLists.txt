@@ -1,2 +1,5 @@
-# Фаза-заглушка: додай <ioexp>_core.c і <ioexp>_hal.c у SRCS, коли дійдеш до відповідної фази.
-idf_component_register(INCLUDE_DIRS "include")
+# Фаза 2: ioexp_core.c (чиста логіка) і ioexp_hal.c (запис байта, старт: нуль першим).
+idf_component_register(SRCS "ioexp_core.c" "ioexp_hal.c"
+                       INCLUDE_DIRS "include"
+                       REQUIRES board i2c_bus esp_driver_i2c
+                       PRIV_REQUIRES esp_timer log)

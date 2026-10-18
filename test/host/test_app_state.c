@@ -77,6 +77,7 @@ static void test_all_49_pairs(void)
         }
     }
     CHECK(allowed + refused == 49);
+    printf("ПОКРИТТЯ пар станів автомата: %d з 49\n", allowed + refused);
     CHECK(allowed == 10);
     CHECK(refused == 39);
 }

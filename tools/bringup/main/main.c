@@ -5,6 +5,7 @@
 
 #define BRINGUP_TEST 7   // 0=chip/psram 1=i2c scan 2=pcf 3=adc
                          // 4=tof 5=crsf 6=encoders 7=motors
+                         // 8=indicator (OQ-3) 9=buzzer (OQ-2)
 
 void app_main(void)
 {
@@ -24,6 +25,10 @@ void app_main(void)
     test_p6_encoders();
 #elif BRINGUP_TEST == 7
     test_p7_motors();
+#elif BRINGUP_TEST == 8
+    test_p8_indicator();
+#elif BRINGUP_TEST == 9
+    test_p9_buzzer();
 #else
 #error "Тест ще не реалізований"
 #endif

@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "esp_err.h"
+#include "ui_core.h"
 
 typedef enum { CONSOLE_MOTOR_ARM, CONSOLE_MOTOR_DISARM, CONSOLE_MOTOR_DRIVE } console_motor_cmd_t;
 
@@ -28,6 +29,23 @@ typedef struct {
     uint32_t last_stop_t_ms;
 } console_motor_status_t;
 
+// Відповідь ui на light чи beep (spec AC-04…AC-10, AC-14, AC-15).
+typedef struct {
+    ui_result_t result;       // UI_OK — прийнято; інакше причина відмови
+    bool bus_failure;         // запис не підтверджено: ручна зміна відкочена
+    bool queued;              // beep ліг у слот і звучатиме після сигналу переходу
+    bool head, red, green;    // стан каналів світла після команди
+} console_ui_reply_t;
+
+typedef struct {
+    bool expander_ok;
+    bool head, red, green;
+    bool rear_auto;
+    bool indicator_red;
+    bool buzzer_on;
+    uint32_t remaining_ms;
+} console_ui_status_t;
+
 // Дії від інших модулів передає main — консоль не залежить від watchdog і storage (ADR-0002).
 typedef struct {
     void (*storage_status)(char *buf, size_t n);  // текст стану сховища у буфер виклику (з причиною, якщо недоступне)
@@ -37,6 +55,10 @@ typedef struct {
     // Команди моторів: false — керування не відповіло. NULL → команда відхиляється з поясненням.
     bool (*motor_cmd)(console_motor_cmd_t cmd, float throttle, float steer, console_motor_reply_t *reply);
     void (*motor_status)(console_motor_status_t *s);
+    // Світло й зумер: false — ui не стартувала. NULL → команда відхиляється з поясненням.
+    bool (*light_cmd)(ui_channel_t ch, bool on, console_ui_reply_t *reply);
+    bool (*beep_cmd)(uint32_t hz, uint32_t dur_ms, console_ui_reply_t *reply);
+    void (*ui_status)(console_ui_status_t *s);
 } console_ops_t;
 
 // Встановлює драйвер USB-Serial-JTAG і стартує задачу console (core 0, пріоритет 1).
