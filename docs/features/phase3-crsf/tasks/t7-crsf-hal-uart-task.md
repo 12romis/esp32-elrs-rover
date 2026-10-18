@@ -9,8 +9,8 @@ files_hint: ["components/crsf/crsf_hal.c", "components/crsf/include/crsf_hal.h",
 owner: "Агент (код); Розробник (приймання на залізі)"
 estimate: "M"
 context_budget: "S"
-status: "done"
-step: "COMMIT"
+status: "review"
+step: "REVIEW — очікує приймання на залізі (T12)"
 ---
 
 <!-- To the executing agent: work from what is inlined here. If a slice is insufficient, ambiguous, or contradicts the code in front of you, open the named file for the full text and follow that. Do not invent the missing part. -->

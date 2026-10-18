@@ -98,6 +98,53 @@ static bool in_range(float x)
     return x == x && x >= -1.0f && x <= 1.0f;
 }
 
+// Умови озброєння з пульта без фронту: стан → звʼязок → напруга → нейтраль (spec AC-04).
+static drive_block_t arm_conditions(const drive_ctl_t *c, app_state_t st, const battery_snapshot_t *b,
+                                    const crsf_intent_t *it, uint32_t now_ms)
+{
+    if (st != APP_STATE_DISARMED) {
+        return DRIVE_BLOCK_NOT_DISARMED;
+    }
+    if (!c->remote_active || !c->link_alive) {
+        return DRIVE_BLOCK_NO_LINK;
+    }
+    if (!battery_snapshot_usable(b, now_ms)) {
+        return DRIVE_BLOCK_NO_MEASUREMENT;
+    }
+    if (battery_is_below_cutoff(b->mv)) {
+        return DRIVE_BLOCK_LOW_VOLTAGE;
+    }
+    if (!it->throttle_neutral || !it->steer_neutral) {
+        return DRIVE_BLOCK_NOT_NEUTRAL;
+    }
+    return DRIVE_BLOCK_NONE;
+}
+
+drive_block_t drive_arm_block(const drive_ctl_t *c, app_state_t st, const battery_snapshot_t *b,
+                              const crsf_intent_t *intent, uint32_t now_ms)
+{
+    drive_block_t blk = arm_conditions(c, st, b, intent, now_ms);
+    if (blk != DRIVE_BLOCK_NONE) {
+        return blk;
+    }
+    // Фронт: тумблер має щойно перемкнутися з DISARM. База ARM чи «невідомо» означає, що ні.
+    return c->sw_base == CRSF_SW_DISARM ? DRIVE_BLOCK_NONE : DRIVE_BLOCK_NO_EDGE;
+}
+
+const char *drive_block_text(drive_block_t b)
+{
+    switch (b) {
+    case DRIVE_BLOCK_NONE:            return "можна: перемкніть тумблер з DISARM у ARM";
+    case DRIVE_BLOCK_NOT_DISARMED:    return "ровер не в стані DISARMED";
+    case DRIVE_BLOCK_NO_LINK:         return "звʼязку з пультом немає";
+    case DRIVE_BLOCK_NO_MEASUREMENT:  return "вимірювання напруги немає або застаріло";
+    case DRIVE_BLOCK_LOW_VOLTAGE:     return "напруга нижча за поріг";
+    case DRIVE_BLOCK_NOT_NEUTRAL:     return "стік не в нейтралі";
+    case DRIVE_BLOCK_NO_EDGE:         return "тумблер не перемикався з DISARM: поверніть його в DISARM і знову в ARM";
+    }
+    return "?";
+}
+
 // Звʼязок з пультом (ADR-0001, ADR-0003): стендовий режим закінчується першим валідним кадром каналів; далі звʼязок
 // живий, доки від мітки останнього кадру минуло не більше DRIVE_LINK_TIMEOUT_MS. Втрата й відновлення скидають
 // базу тумблера (перший кадр після них лише встановлює її, фронтом не є) і дають подію для журналу.
@@ -240,6 +287,38 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
         break;
     }
 
+    // Пульт: намір пілота, фронт тумблера, озброєння, рух і роззброєння тумблером (ADR-0003). База тумблера
+    // оновлюється на кожному такті за живого звʼязку, тож фронт буває рівно один раз.
+    if (c->remote_active && c->link_alive) {
+        crsf_intent_t it;
+        crsf_intent(&in->rc, &it);
+        bool edge = crsf_edge(&c->sw_base, it.sw);
+        if (in->state == APP_STATE_DISARMED && edge && !o->has_state_request) {
+            drive_block_t blk = arm_conditions(c, in->state, &in->battery, &it, in->now_ms);
+            if (blk == DRIVE_BLOCK_NONE) {
+                o->has_state_request = true;
+                o->state_request = APP_STATE_ARMED;   // виходи лишаються вимкненими; STBY підніметься в ARMED
+                o->events |= DRIVE_EVT_REMOTE_ARMED;
+            } else {
+                o->events |= DRIVE_EVT_ARM_REFUSED;
+                o->arm_block = blk;
+            }
+        } else if (in->state == APP_STATE_ARMED && !o->has_state_request && !stopped) {
+            if (it.sw == CRSF_SW_DISARM) {
+                clear_window(c);
+                o->stop = DRIVE_STOP_SWITCH_DISARM;
+                o->has_state_request = true;
+                o->state_request = APP_STATE_DISARMED;
+            } else {
+                float l, r;
+                drive_mix(it.throttle, it.steer, &l, &r);
+                o->out = drive_outputs_from(l, r);
+                o->left_permille = signed_pm(o->out.left);
+                o->right_permille = signed_pm(o->out.right);
+            }
+        }
+    }
+
     // Спливання вікна: виходи вимикаються, і лише потім запитується DISARMED.
     if (c->window_active && (uint32_t)(in->now_ms - c->accepted_ms) >= DRIVE_WINDOW_MS) {
         o->min_mv = c->min_mv;
@@ -316,3 +395,4 @@ void drive_disarm_text(app_state_t state_before, bool has_req, app_state_t req, 
         snprintf(buf, n, "стан %s не змінено: DISARMED досяжний лише з ARMED", app_state_name(state_before));
     }
 }
+

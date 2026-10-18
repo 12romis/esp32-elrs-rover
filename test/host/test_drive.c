@@ -395,7 +395,8 @@ static void test_future_snapshot_and_texts(void)
 
 // ---------- phase3-crsf T4: стендовий режим, таймер звʼязку, відмова «керує пульт» ----------
 
-// Знімок приймача: кадр прийнято в момент t_ms, канали за замовчуванням у спокої, тумблер у DISARM.
+// Знімок приймача: кадр прийнято в момент t_ms, стіки в спокої, тумблер у ARM (ARMED-сценарії T4 не мають
+// одразу роззброюватися тумблером; для DISARM-сценаріїв T5 є rc_raw).
 static crsf_snapshot_t rc_snap(uint32_t t_ms, uint32_t seq)
 {
     crsf_snapshot_t r;
@@ -404,7 +405,7 @@ static crsf_snapshot_t rc_snap(uint32_t t_ms, uint32_t seq)
     r.seq = seq;
     r.t_ms = t_ms;
     for (int i = 0; i < CRSF_CHANNELS; i++) r.ch[i] = CRSF_RAW_CENTER;
-    r.ch[CRSF_IDX_ARM] = 191;
+    r.ch[CRSF_IDX_ARM] = 1792;
     return r;
 }
 
@@ -564,6 +565,196 @@ static void test_link_stop_texts(void)
     CHECK(strstr(drive_stop_text(DRIVE_STOP_SWITCH_DISARM), "тумблер") != NULL);
 }
 
+// ---------- phase3-crsf T5: озброєння фронтом тумблера, рух стіком, роззброєння ----------
+
+static crsf_snapshot_t rc_raw(uint32_t t_ms, uint32_t seq, uint16_t steer, uint16_t thr, uint16_t sw)
+{
+    crsf_snapshot_t r = rc_snap(t_ms, seq);
+    r.ch[CRSF_IDX_STEER] = steer;
+    r.ch[CRSF_IDX_THROTTLE] = thr;
+    r.ch[CRSF_IDX_ARM] = sw;
+    return r;
+}
+
+#define SW_DIS 191
+#define SW_ARM 1792
+#define NEUT 992
+
+// Готує ровер у DISARMED зі звʼязком і тумблером у DISARM (база встановлена), повертає наступну мітку часу.
+static uint32_t ready_disarmed(drive_ctl_t *c, uint32_t t0)
+{
+    drive_ctl_init(c);
+    go_rc(c, APP_STATE_DISARMED, t0, snap(8000, t0), rc_raw(t0, 1, NEUT, NEUT, SW_DIS), DRIVE_REQ_NONE, 0, 0);
+    go_rc(c, APP_STATE_DISARMED, t0 + 20, snap(8000, t0 + 20), rc_raw(t0 + 20, 2, NEUT, NEUT, SW_DIS), DRIVE_REQ_NONE, 0, 0);
+    return t0 + 40;
+}
+
+static void test_remote_arm_edge(void)
+{
+    drive_ctl_t c; drive_ctl_out_t o;
+    uint32_t t = ready_disarmed(&c, 1000);
+    CHECK(c.sw_base == CRSF_SW_DISARM);
+    // Фронт DISARM → ARM за всіх умов: запит ARMED, STBY ще нижче (виходи вимикає відсутність руху).
+    o = go_rc(&c, APP_STATE_DISARMED, t, snap(8000, t), rc_raw(t, 3, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_ARMED);
+    CHECK(o.events & DRIVE_EVT_REMOTE_ARMED);
+    check_off(o.out);
+    // Тумблер лишається в ARM, ровер вже ARMED: другого фронту немає.
+    o = go_rc(&c, APP_STATE_ARMED, t + 20, snap(8000, t + 20), rc_raw(t + 20, 4, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(!o.has_state_request && !(o.events & DRIVE_EVT_REMOTE_ARMED));
+    // Дрібний стік у мертвій зоні (спокій зміщений, як виміряно) не заважає озброєнню.
+    t = ready_disarmed(&c, 5000);
+    o = go_rc(&c, APP_STATE_DISARMED, t, snap(8000, t), rc_raw(t, 3, 982, 978, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.state_request == APP_STATE_ARMED && o.has_state_request);
+}
+
+static void test_remote_arm_refusals(void)
+{
+    drive_ctl_t c; drive_ctl_out_t o;
+    uint32_t t;
+    // Стік не в нейтралі.
+    t = ready_disarmed(&c, 1000);
+    o = go_rc(&c, APP_STATE_DISARMED, t, snap(8000, t), rc_raw(t, 3, 1500, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(!o.has_state_request && (o.events & DRIVE_EVT_ARM_REFUSED) && o.arm_block == DRIVE_BLOCK_NOT_NEUTRAL);
+    // Повернення стіка в нейтраль при тумблері в ARM ровер не озброює (AC-04).
+    o = go_rc(&c, APP_STATE_DISARMED, t + 20, snap(8000, t + 20), rc_raw(t + 20, 4, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(!o.has_state_request && !(o.events & DRIVE_EVT_ARM_REFUSED));      // другого фронту немає, нового рядка немає
+    CHECK(drive_arm_block(&c, APP_STATE_DISARMED, &(battery_snapshot_t){8000, t + 20, true},
+                          &(crsf_intent_t){0, 0, true, true, CRSF_SW_ARM}, t + 20) == DRIVE_BLOCK_NO_EDGE);
+    // Вісь тяги теж перевіряється.
+    t = ready_disarmed(&c, 3000);
+    o = go_rc(&c, APP_STATE_DISARMED, t, snap(8000, t), rc_raw(t, 3, NEUT, 1700, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(!o.has_state_request && o.arm_block == DRIVE_BLOCK_NOT_NEUTRAL);
+    // Напруга нижче порога.
+    t = ready_disarmed(&c, 5000);
+    o = go_rc(&c, APP_STATE_DISARMED, t, snap(5999, t), rc_raw(t, 3, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(!o.has_state_request && o.arm_block == DRIVE_BLOCK_LOW_VOLTAGE && (o.events & DRIVE_EVT_ARM_REFUSED));
+    // Вимірювання немає/застаріло.
+    t = ready_disarmed(&c, 7000);
+    o = go_rc(&c, APP_STATE_DISARMED, t, snap(8000, t - 700), rc_raw(t, 3, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(!o.has_state_request && o.arm_block == DRIVE_BLOCK_NO_MEASUREMENT);
+    // Порядок: напруга важливіша за стік (звʼязок → напруга → нейтраль → фронт).
+    t = ready_disarmed(&c, 9000);
+    o = go_rc(&c, APP_STATE_DISARMED, t, snap(5000, t), rc_raw(t, 3, 1500, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.arm_block == DRIVE_BLOCK_LOW_VOLTAGE);
+    // Тумблер уже в ARM при появі звʼязку: фронту немає, озброєння не буде (AC-04).
+    drive_ctl_init(&c);
+    o = go_rc(&c, APP_STATE_DISARMED, 1000, snap(8000, 1000), rc_raw(1000, 1, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(!o.has_state_request && !(o.events & DRIVE_EVT_ARM_REFUSED));
+    o = go_rc(&c, APP_STATE_DISARMED, 1020, snap(8000, 1020), rc_raw(1020, 2, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(!o.has_state_request);
+    // Після втрати звʼязку з тумблером у ARM, що вже стояв: теж без озброєння.
+    t = ready_disarmed(&c, 3000);
+    go_rc(&c, APP_STATE_DISARMED, t + 700, snap(8000, t + 700), rc_raw(t, 3, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);   // втрата
+    CHECK(!c.link_alive);
+    o = go_rc(&c, APP_STATE_DISARMED, t + 2000, snap(8000, t + 2000), rc_raw(t + 1990, 50, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(c.link_alive && !o.has_state_request);                                // перший кадр після втрати лише база
+    // Без звʼязку статус: NO_LINK.
+    CHECK(drive_arm_block(&c, APP_STATE_DISARMED, &(battery_snapshot_t){8000, 0, true}, &(crsf_intent_t){0}, 0) != DRIVE_BLOCK_NONE);
+    // Не в DISARMED.
+    CHECK(drive_arm_block(&c, APP_STATE_ARMED, &(battery_snapshot_t){8000, 0, true}, &(crsf_intent_t){0}, 0) == DRIVE_BLOCK_NOT_DISARMED);
+    // Тексти.
+    CHECK(strstr(drive_block_text(DRIVE_BLOCK_NOT_NEUTRAL), "нейтрал") != NULL);
+    CHECK(strstr(drive_block_text(DRIVE_BLOCK_NO_EDGE), "DISARM") != NULL);
+    CHECK(strstr(drive_block_text(DRIVE_BLOCK_NO_LINK), "звʼязку") != NULL);
+    CHECK(strstr(drive_block_text(DRIVE_BLOCK_LOW_VOLTAGE), "напруга") != NULL);
+    CHECK(strlen(drive_block_text(DRIVE_BLOCK_NONE)) > 0);
+}
+
+static void test_remote_driving(void)
+{
+    drive_ctl_t c; drive_ctl_out_t o;
+    uint32_t t = ready_disarmed(&c, 1000);
+    go_rc(&c, APP_STATE_DISARMED, t, snap(8000, t), rc_raw(t, 3, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);   // озброєно
+    t += 20;
+    // Стік у спокої: STBY вгору, ШІМ 0 (ARMED).
+    o = go_rc(&c, APP_STATE_ARMED, t, snap(8000, t), rc_raw(t, 4, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.out.stby == 1 && o.left_permille == 0 && o.right_permille == 0 && !o.has_state_request);
+    // Вперед на 0.5 від ходу: обидва борти вперед, рівні (AC-01).
+    o = go_rc(&c, APP_STATE_ARMED, t + 20, snap(8000, t + 20), rc_raw(t + 20, 5, NEUT, 1400, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.out.stby == 1 && o.left_permille > 0 && o.left_permille == o.right_permille);
+    CHECK(o.out.left.dir1 == 1 && o.out.left.dir2 == 0 && o.out.right.dir1 == 1);
+    int16_t half = o.left_permille;
+    // Далі стік — швидше, до обмеження 0.75.
+    o = go_rc(&c, APP_STATE_ARMED, t + 40, snap(8000, t + 40), rc_raw(t + 40, 6, NEUT, 1650, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.left_permille > half && o.left_permille <= 750);
+    // Назад: обидва борти назад.
+    o = go_rc(&c, APP_STATE_ARMED, t + 60, snap(8000, t + 60), rc_raw(t + 60, 7, NEUT, 400, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.left_permille < 0 && o.right_permille < 0 && o.out.left.dir1 == 0 && o.out.left.dir2 == 1);
+    // Праворуч на місці: лівий вперед, правий назад.
+    o = go_rc(&c, APP_STATE_ARMED, t + 80, snap(8000, t + 80), rc_raw(t + 80, 8, 1792, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.left_permille > 0 && o.right_permille < 0);
+    // Ліворуч — дзеркально.
+    o = go_rc(&c, APP_STATE_ARMED, t + 100, snap(8000, t + 100), rc_raw(t + 100, 9, 180, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.left_permille < 0 && o.right_permille > 0);
+    // Упор і діагональ: жоден борт понад 750 (AC-02).
+    uint16_t ext[] = {172, 992, 1811, 1808};
+    for (int a = 0; a < 4; a++) {
+        for (int b = 0; b < 4; b++) {
+            o = go_rc(&c, APP_STATE_ARMED, t + 120, snap(8000, t + 120), rc_raw(t + 120, 10, ext[a], ext[b], SW_ARM), DRIVE_REQ_NONE, 0, 0);
+            CHECK(o.left_permille <= 750 && o.left_permille >= -750 && o.right_permille <= 750 && o.right_permille >= -750);
+            CHECK(o.out.left.duty_permille <= 750 && o.out.right.duty_permille <= 750);
+        }
+    }
+    // Мертва зона дає нуль.
+    o = go_rc(&c, APP_STATE_ARMED, t + 140, snap(8000, t + 140), rc_raw(t + 140, 11, 1000, 1030, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.left_permille == 0 && o.right_permille == 0 && o.out.stby == 1);
+    // Відпущений стік зупиняє борти, ровер лишається ARMED (без запиту стану).
+    CHECK(!o.has_state_request);
+}
+
+static void test_remote_disarm_paths(void)
+{
+    drive_ctl_t c; drive_ctl_out_t o;
+    uint32_t t = ready_disarmed(&c, 1000);
+    go_rc(&c, APP_STATE_DISARMED, t, snap(8000, t), rc_raw(t, 3, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    t += 20;
+    go_rc(&c, APP_STATE_ARMED, t, snap(8000, t), rc_raw(t, 4, NEUT, 1700, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    // Тумблер у DISARM: виходи вимкнено, запит DISARMED (AC-03).
+    o = go_rc(&c, APP_STATE_ARMED, t + 20, snap(8000, t + 20), rc_raw(t + 20, 5, NEUT, 1700, SW_DIS), DRIVE_REQ_NONE, 0, 0);
+    check_off(o.out);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_DISARMED && o.stop == DRIVE_STOP_SWITCH_DISARM);
+
+    // Консольний disarm у ARMED з пульта (AC-16): зупинка, DISARMED; тумблер у ARM — повторного озброєння немає.
+    t = ready_disarmed(&c, 5000);
+    go_rc(&c, APP_STATE_DISARMED, t, snap(8000, t), rc_raw(t, 3, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    t += 20;
+    go_rc(&c, APP_STATE_ARMED, t, snap(8000, t), rc_raw(t, 4, NEUT, 1700, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    o = go_rc(&c, APP_STATE_ARMED, t + 20, snap(8000, t + 20), rc_raw(t + 20, 5, NEUT, 1700, SW_ARM), DRIVE_REQ_DISARM, 0, 0);
+    check_off(o.out);
+    CHECK(o.accepted && o.has_state_request && o.state_request == APP_STATE_DISARMED && o.stop == DRIVE_STOP_DISARM);
+    o = go_rc(&c, APP_STATE_DISARMED, t + 40, snap(8000, t + 40), rc_raw(t + 40, 6, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(!o.has_state_request);                                          // тумблер у ARM, фронту немає
+    CHECK(drive_arm_block(&c, APP_STATE_DISARMED, &(battery_snapshot_t){8000, t + 40, true},
+                          &(crsf_intent_t){0, 0, true, true, CRSF_SW_ARM}, t + 40) == DRIVE_BLOCK_NO_EDGE);
+    // Тумблер вниз і знову вгору: можна озброїти.
+    go_rc(&c, APP_STATE_DISARMED, t + 60, snap(8000, t + 60), rc_raw(t + 60, 7, NEUT, NEUT, SW_DIS), DRIVE_REQ_NONE, 0, 0);
+    o = go_rc(&c, APP_STATE_DISARMED, t + 80, snap(8000, t + 80), rc_raw(t + 80, 8, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_ARMED);
+
+    // Відсічка по напрузі в русі з пульта: FAILSAFE «напруга» незалежно від стіка й тумблера (AC-17).
+    t = ready_disarmed(&c, 9000);
+    go_rc(&c, APP_STATE_DISARMED, t, snap(8000, t), rc_raw(t, 3, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    t += 20;
+    go_rc(&c, APP_STATE_ARMED, t, snap(8000, t), rc_raw(t, 4, NEUT, 1700, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    o = go_rc(&c, APP_STATE_ARMED, t + 20, snap(5900, t + 20), rc_raw(t + 20, 5, NEUT, 1700, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    check_off(o.out);
+    CHECK(o.state_request == APP_STATE_FAILSAFE && o.failsafe_cause == APP_FS_VOLTAGE && o.stop == DRIVE_STOP_LOW_VOLTAGE);
+}
+
+static void test_stby_only_in_armed_remote(void)
+{
+    // Поза ARMED виходи завжди вимкнені, хоч би де був стік і тумблер (конституція, п. 7).
+    for (int st = 0; st < APP_STATE_COUNT; st++) {
+        if (st == APP_STATE_ARMED) continue;
+        drive_ctl_t c; drive_ctl_out_t o;
+        uint32_t t = ready_disarmed(&c, 1000);
+        o = go_rc(&c, (app_state_t)st, t, snap(8000, t), rc_raw(t, 3, 1792, 1808, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+        check_off(o.out);
+        CHECK(o.left_permille == 0 && o.right_permille == 0);
+    }
+}
+
 int main(void)
 {
     test_mix();
@@ -587,5 +778,10 @@ int main(void)
     test_console_refused_after_bench();
     test_link_timer();
     test_link_stop_texts();
+    test_remote_arm_edge();
+    test_remote_arm_refusals();
+    test_remote_driving();
+    test_remote_disarm_paths();
+    test_stby_only_in_armed_remote();
     return test_summary();
 }

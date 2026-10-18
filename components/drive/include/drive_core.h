@@ -92,6 +92,19 @@ typedef struct {
 #define DRIVE_EVT_REMOTE_APPEARED (1u << 0)   // перший кадр пульта: стенд закінчено
 #define DRIVE_EVT_LINK_LOST (1u << 1)
 #define DRIVE_EVT_LINK_RESTORED (1u << 2)
+#define DRIVE_EVT_REMOTE_ARMED (1u << 3)      // озброєно тумблером пульта
+#define DRIVE_EVT_ARM_REFUSED (1u << 4)       // фронт тумблера відхилено: причина в arm_block
+
+// Що блокує озброєння з пульта (spec AC-04). Порядок перевірки: звʼязок → напруга → нейтраль стіків → фронт тумблера.
+typedef enum {
+    DRIVE_BLOCK_NONE,           // можна: тумблер перемкнеться з DISARM у ARM (або вже перемкнувся)
+    DRIVE_BLOCK_NOT_DISARMED,   // ровер не в DISARMED
+    DRIVE_BLOCK_NO_LINK,        // звʼязку немає (чи пульт ще не з'являвся)
+    DRIVE_BLOCK_NO_MEASUREMENT, // вимірювання напруги немає або застаріло
+    DRIVE_BLOCK_LOW_VOLTAGE,    // напруга нижча за поріг
+    DRIVE_BLOCK_NOT_NEUTRAL,    // стік не в нейтралі
+    DRIVE_BLOCK_NO_EDGE         // тумблер уже в ARM (чи база невідома): треба повернути в DISARM і знову в ARM
+} drive_block_t;
 
 typedef struct {
     uint32_t now_ms;
@@ -114,6 +127,7 @@ typedef struct {
     uint32_t remaining_ms;       // скільки лишилось діяти команді руху (0, якщо команди немає)
     uint32_t min_mv;             // мінімальна напруга за останнє вікно (для журналу, spec OQ-3)
     app_failsafe_cause_t failsafe_cause;  // причина, якщо state_request == FAILSAFE (ADR-0002)
+    drive_block_t arm_block;     // перша невиконана умова, якщо events & DRIVE_EVT_ARM_REFUSED
     uint32_t events;             // DRIVE_EVT_* для журналу
 } drive_ctl_out_t;
 
@@ -131,3 +145,10 @@ const char *drive_stop_text(drive_stop_t s);
 
 // Пояснення відповіді на disarm (AC-09): що сталося зі станом. has_req/req — запит переходу, який видав control.
 void drive_disarm_text(app_state_t state_before, bool has_req, app_state_t req, drive_stop_t stop, char *buf, size_t n);
+
+// Перша невиконана умова озброєння з пульта у поточному стані (для status і журналу). NONE — озброїти можна.
+drive_block_t drive_arm_block(const drive_ctl_t *c, app_state_t st, const battery_snapshot_t *b,
+                              const crsf_intent_t *intent, uint32_t now_ms);
+
+// Пояснення простими словами українською (для рядка журналу й status).
+const char *drive_block_text(drive_block_t b);
