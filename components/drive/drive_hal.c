@@ -248,8 +248,9 @@ static void control_task(void *arg)
     (void)arg;
     esp_err_t err = esp_task_wdt_add(NULL);
     if (err != ESP_OK) {
-        // Без Task WDT зависання control лишило б мотори без захисту (ADR-0004): запити не приймаємо, виходи вимкнені.
-        ESP_LOGE(TAG, "esp_task_wdt_add: %s — моторів не запущено, arm і drive недоступні", esp_err_to_name(err));
+        // Без Task WDT зависання control лишило б мотори без захисту (ADR-0004): консоль не приймає запитів (s_running),
+        // а крок керування з outputs_inhibited не озброює з пульта й тримає виходи вимкненими (review F1).
+        ESP_LOGE(TAG, "esp_task_wdt_add: %s — моторів не запущено, озброєння з консолі й пульта недоступне", esp_err_to_name(err));
     } else {
         s_running = true;
     }
@@ -264,6 +265,7 @@ static void control_task(void *arg)
         bool got = xQueueReceive(s_queue, &item, 0) == pdTRUE;
         in.state = app_state_get();
         in.failsafe_cause = app_state_failsafe_cause();
+        in.outputs_inhibited = !s_running;
         battery_get_snapshot(&in.battery);
         crsf_snapshot_get(&in.rc);   // без приймача знімок порожній: стендовий режим (ADR-0001)
         uint32_t now = now_ms();  // час беремо ПІСЛЯ зчитування черги й знімка: вік не стає відʼємним

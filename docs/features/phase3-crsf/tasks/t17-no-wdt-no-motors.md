@@ -9,8 +9,8 @@ files_hint: ["components/drive/drive_core.c", "components/drive/include/drive_co
 owner: "Агент (код); Розробник (приймання на залізі)"
 estimate: "S"
 context_budget: "S"
-status: "todo"
-step: "—"
+status: "done"
+step: "COMMIT"
 ---
 
 # T17 — Без підписки control на Task WDT пульт не озброює й мотори не крутяться (review F1)

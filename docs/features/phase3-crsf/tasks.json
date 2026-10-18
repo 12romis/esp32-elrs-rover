@@ -361,7 +361,7 @@
         "test/host/test_drive.c"
       ],
       "file": "docs/features/phase3-crsf/tasks/t17-no-wdt-no-motors.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T18",

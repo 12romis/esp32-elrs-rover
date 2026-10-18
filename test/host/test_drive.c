@@ -873,6 +873,47 @@ static void test_switch_shown(void)
     CHECK((o.events & DRIVE_EVT_LINK_LOST) && drive_switch_shown(&c) == CRSF_SW_UNKNOWN);
 }
 
+// T17 (review F1): заборона виходів (control не підписано на Task WDT) — жодного ARMED і ШІМ ні з пульта, ні з консолі.
+static drive_ctl_out_t go_inh(drive_ctl_t *c, app_state_t st, uint32_t now, crsf_snapshot_t rc, drive_req_kind_t k,
+                              float thr, float steer)
+{
+    drive_ctl_out_t o;
+    drive_ctl_in_t in = in_for(st, now, snap(8000, now), k, thr, steer);
+    in.rc = rc;
+    in.outputs_inhibited = true;
+    drive_ctl_step(c, &in, &o);
+    return o;
+}
+
+static void test_outputs_inhibited(void)
+{
+    drive_ctl_t c; drive_ctl_out_t o;
+    // Фронт тумблера за всіх умов: запиту ARMED немає.
+    uint32_t t = ready_disarmed(&c, 1000);
+    o = go_inh(&c, APP_STATE_DISARMED, t, rc_raw(t, 3, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(!(o.has_state_request && o.state_request == APP_STATE_ARMED));
+    CHECK(!(o.events & DRIVE_EVT_REMOTE_ARMED));
+    check_off(o.out);
+    // Якщо ровер усе ж ARMED: стік до упору не дає ШІМ, STBY низька.
+    o = go_inh(&c, APP_STATE_ARMED, t + 20, rc_raw(t + 20, 4, NEUT, 1811, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    check_off(o.out);
+    CHECK(o.left_permille == 0 && o.right_permille == 0);
+    // Консоль у стенді: arm відхилено, drive не відкриває вікна.
+    drive_ctl_init(&c);
+    crsf_snapshot_t none;
+    memset(&none, 0, sizeof none);
+    o = go_inh(&c, APP_STATE_DISARMED, 1000, none, DRIVE_REQ_ARM, 0, 0);
+    CHECK(!o.accepted && !(o.has_state_request && o.state_request == APP_STATE_ARMED));
+    o = go_inh(&c, APP_STATE_ARMED, 1020, none, DRIVE_REQ_DRIVE, 0.5f, 0.0f);
+    CHECK(!o.accepted && !c.window_active);
+    check_off(o.out);
+    // Втрата звʼязку при забороні так само веде у FAILSAFE (запити зупинки не блокуються).
+    t = ready_disarmed(&c, 5000);
+    go_rc(&c, APP_STATE_ARMED, t, snap(8000, t), rc_raw(t, 3, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    o = go_inh(&c, APP_STATE_ARMED, t + 600, rc_raw(t, 3, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_FAILSAFE);
+}
+
 static void test_failsafe_exit_switch(void)
 {
     drive_ctl_t c; drive_ctl_out_t o;
@@ -1026,6 +1067,7 @@ int main(void)
     test_failsafe_exit_switch();
     test_link_age_unsigned();
     test_switch_shown();
+    test_outputs_inhibited();
     test_failsafe_voltage_never_exits();
     test_failsafe_exit_texts();
     test_matrix_126();

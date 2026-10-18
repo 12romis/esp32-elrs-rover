@@ -395,6 +395,24 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
         o->remaining_ms = DRIVE_WINDOW_MS - (uint32_t)(in->now_ms - c->accepted_ms);
         o->min_mv = c->min_mv;
     }
+
+    // Без Task WDT (review F1): моторів не вмикаємо ні з пульта, ні з консолі. Запити зупинки (DISARMED, FAILSAFE)
+    // лишаються — вони вже з вимкненими виходами.
+    if (in->outputs_inhibited) {
+        clear_window(c);
+        o->out = drive_outputs_off();
+        o->left_permille = 0;
+        o->right_permille = 0;
+        o->remaining_ms = 0;
+        if (o->has_state_request && o->state_request == APP_STATE_ARMED) {
+            o->has_state_request = false;
+            o->events &= ~DRIVE_EVT_REMOTE_ARMED;
+        }
+        if (o->accepted && (in->req.kind == DRIVE_REQ_ARM || in->req.kind == DRIVE_REQ_DRIVE)) {
+            o->accepted = false;
+            o->reason = DRIVE_REASON_TRANSITION_REFUSED;
+        }
+    }
 }
 
 void drive_reason_text(drive_reason_t r, uint32_t mv, char *buf, size_t n)

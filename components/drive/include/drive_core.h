@@ -118,6 +118,7 @@ typedef struct {
     drive_req_t req;
     crsf_snapshot_t rc;          // знімок приймача (phase3-crsf); без кадрів (have_frame = false) — стендовий режим
     app_failsafe_cause_t failsafe_cause;  // причина поточного FAILSAFE з app_state (NONE поза FAILSAFE)
+    bool outputs_inhibited;      // control не підписано на Task WDT (ADR-0004 фази 1): виходи вимкнені, ARMED не запитується
 } drive_ctl_in_t;
 
 typedef struct {
