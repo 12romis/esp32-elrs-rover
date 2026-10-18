@@ -1,0 +1,203 @@
+{
+  "slug": "phase1-drive",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Створити battery_core: відліки в мВ, поріг 6000 мВ, свіжість знімка",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-13",
+        "AC-14",
+        "AC-22"
+      ],
+      "dod": "Хостові тести battery_core проходять (межі порога, свіжість, усереднення).",
+      "files_hint": [
+        "components/battery/",
+        "test/host/test_battery.c"
+      ],
+      "file": "docs/features/phase1-drive/tasks/t1-battery-core.md",
+      "status": "done"
+    },
+    {
+      "id": "T2",
+      "title": "Створити drive_core: мікшер, вирівнювання, обмеження 0.75, рівні виходів",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-03",
+        "AC-04",
+        "AC-10",
+        "AC-20",
+        "AC-21"
+      ],
+      "dod": "Хостові тести мікшера, вирівнювання, насичення й рівнів виходів проходять.",
+      "files_hint": [
+        "components/drive/",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase1-drive/tasks/t2-drive-core-mixer.md",
+      "status": "done"
+    },
+    {
+      "id": "T3",
+      "title": "Додати drive_ctl: запити arm/disarm/drive, дозволи, причини відмов",
+      "layer": "app",
+      "deps": [
+        "T1",
+        "T2"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-02",
+        "AC-09",
+        "AC-13"
+      ],
+      "dod": "Хостові тести дозволів і причин проходять (arm 7 станів, drive 7 станів, disarm 7 станів).",
+      "files_hint": [
+        "components/drive/",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase1-drive/tasks/t3-drive-ctl-requests.md",
+      "status": "done"
+    },
+    {
+      "id": "T4",
+      "title": "Додати drive_ctl: вікно команди 2 с, відсічка по напрузі, порядок зупинки",
+      "layer": "app",
+      "deps": [
+        "T3"
+      ],
+      "acs": [
+        "AC-08",
+        "AC-11",
+        "AC-12",
+        "AC-14"
+      ],
+      "dod": "Хостові тести вікна, відсічки й порядку зупинки проходять.",
+      "files_hint": [
+        "components/drive/",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase1-drive/tasks/t4-drive-ctl-window-cutoff.md",
+      "status": "done"
+    },
+    {
+      "id": "T5",
+      "title": "Розширити console_core: arm, disarm, drive, суворий розбір чисел, матриця дозволів",
+      "layer": "app",
+      "deps": [],
+      "acs": [
+        "AC-05",
+        "AC-06",
+        "AC-07",
+        "AC-16"
+      ],
+      "dod": "Хостові тести AC-05, AC-06, AC-07 і форматів AC-16 проходять.",
+      "files_hint": [
+        "components/rover_console/",
+        "test/host/test_console.c"
+      ],
+      "file": "docs/features/phase1-drive/tasks/t5-console-core-commands.md",
+      "status": "done"
+    },
+    {
+      "id": "T6",
+      "title": "Створити battery_hal: АЦП з калібруванням, задача battery, знімок напруги",
+      "layer": "infra",
+      "deps": [
+        "T1"
+      ],
+      "acs": [
+        "AC-13",
+        "AC-14",
+        "AC-15"
+      ],
+      "dod": "`idf.py build` без помилок і нових попереджень.",
+      "files_hint": [
+        "components/battery/"
+      ],
+      "file": "docs/features/phase1-drive/tasks/t6-battery-hal.md",
+      "status": "review"
+    },
+    {
+      "id": "T7",
+      "title": "Створити drive_hal: LEDC і GPIO моторів, задача control, черга запитів, Task WDT",
+      "layer": "infra",
+      "deps": [
+        "T4",
+        "T6"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-02",
+        "AC-08",
+        "AC-12",
+        "AC-15",
+        "AC-20"
+      ],
+      "dod": "`idf.py build` без помилок і нових попереджень.",
+      "files_hint": [
+        "components/drive/"
+      ],
+      "file": "docs/features/phase1-drive/tasks/t7-drive-hal-control.md",
+      "status": "review"
+    },
+    {
+      "id": "T8",
+      "title": "Підключити arm, disarm, drive і розширений status до console_hal",
+      "layer": "ports",
+      "deps": [
+        "T5",
+        "T7"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-16"
+      ],
+      "dod": "`idf.py build` без помилок і нових попереджень.",
+      "files_hint": [
+        "components/rover_console/"
+      ],
+      "file": "docs/features/phase1-drive/tasks/t8-console-hal-motor-commands.md",
+      "status": "done"
+    },
+    {
+      "id": "T9",
+      "title": "Скласти main.c: порядок старту фази 1 і REQUIRES",
+      "layer": "wiring",
+      "deps": [
+        "T7",
+        "T8"
+      ],
+      "acs": [
+        "AC-15"
+      ],
+      "dod": "`idf.py build` без помилок і нових попереджень.",
+      "files_hint": [
+        "main/"
+      ],
+      "file": "docs/features/phase1-drive/tasks/t9-main-wiring.md",
+      "status": "review"
+    },
+    {
+      "id": "T10",
+      "title": "Підготувати чек-лист приймання фази 1 на залізі і фінальний прогін перевірок",
+      "layer": "docs",
+      "deps": [
+        "T9"
+      ],
+      "acs": [
+        "AC-17",
+        "AC-18",
+        "AC-19"
+      ],
+      "dod": "Хостовий прогін: усі тести пройдено, ≤ 5 с.",
+      "files_hint": [
+        "docs/features/phase1-drive/acceptance.md"
+      ],
+      "file": "docs/features/phase1-drive/tasks/t10-acceptance-checklist.md",
+      "status": "done"
+    }
+  ]
+}
