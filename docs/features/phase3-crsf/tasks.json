@@ -324,7 +324,7 @@
         "test/host/test_crsf.c"
       ],
       "file": "docs/features/phase3-crsf/tasks/t15-failsafe-texts-by-cause.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T16",

@@ -62,7 +62,7 @@ static void do_status(void)
         printf("%s\r\n", line);
     }
     if (s_ops->rc_status) {
-        char rc[640];   // рядки про пульт: джерело, звʼязок, кадри, канали, рух, озброєння, причина FAILSAFE
+        static char rc[800];   // рядки про пульт (зокрема вихід з FAILSAFE); static — не на стеку консолі, викликає лише вона
         s_ops->rc_status(rc, sizeof(rc));
         for (char *p = rc; *p != '\0'; p++) {   // \n → \r\n для терміналу
             if (*p == '\n') {
@@ -129,7 +129,7 @@ static void do_ui(console_cmd_t cmd, const char *line)
     }
     if (r.result != UI_OK) {
         char why[400];  // найдовший текст відмови ≈ 360 байтів (UTF-8), не обрізається
-        console_fmt_ui_denied(why, sizeof(why), r.result, app_state_get());
+        console_fmt_ui_denied(why, sizeof(why), r.result, app_state_get(), app_state_failsafe_cause());
         snprintf(buf, sizeof(buf), "Відхилено: %s", why);
     } else if (r.bus_failure) {
         snprintf(buf, sizeof(buf), "Відхилено: збій шини — розширювач не підтвердив запис, стан світла не змінено (head %s, red %s, green %s).",
@@ -160,7 +160,7 @@ static void execute(const char *line)
         break;
     case CONSOLE_CMD_DENIED_STATE: {
         char buf[320];
-        console_fmt_denied(buf, sizeof(buf), console_identify(line), app_state_get());
+        console_fmt_denied(buf, sizeof(buf), console_identify(line), app_state_get(), app_state_failsafe_cause());
         say(buf);
         break;
     }

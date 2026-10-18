@@ -78,8 +78,9 @@ typedef enum {
 console_drive_result_t console_parse_drive(const char *line, float *throttle, float *steer);
 const char *console_msg_drive_error(console_drive_result_t r);
 
-// Пояснення відмови за станом: називає поточний стан; у FAILSAFE підказує апаратне скидання.
-void console_fmt_denied(char *buf, size_t n, console_cmd_t cmd, app_state_t state);
+// Пояснення відмови за станом: називає поточний стан; у FAILSAFE підказує вихід за причиною (cause):
+// після втрати звʼязку — пультом або скиданням, інакше лише апаратним скиданням.
+void console_fmt_denied(char *buf, size_t n, console_cmd_t cmd, app_state_t state, app_failsafe_cause_t cause);
 
 // Значення борту в проміле зі знаком → «0.30» (два знаки, округлення до найближчого, без «-0.00»).
 void console_fmt_permille(char *buf, size_t n, int16_t permille);
@@ -112,7 +113,7 @@ console_ui_result_t console_parse_beep(const char *line, uint32_t *hz, uint32_t 
 const char *console_msg_light_error(console_ui_result_t r);
 const char *console_msg_beep_error(console_ui_result_t r);
 // Пояснення відмови ui_core: за станом (названо стан), задні ліхтарі керує рух, розширювач недоступний, діапазон.
-void console_fmt_ui_denied(char *buf, size_t n, ui_result_t r, app_state_t state);
+void console_fmt_ui_denied(char *buf, size_t n, ui_result_t r, app_state_t state, app_failsafe_cause_t cause);
 
 // Рядок про світло, зумер і індикатор для status (spec AC-13).
 void console_fmt_ui_status(char *buf, size_t n, bool expander_ok, bool head, bool red, bool green, bool rear_auto,

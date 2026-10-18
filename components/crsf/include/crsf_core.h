@@ -105,6 +105,7 @@ typedef struct {
     crsf_intent_t intent;
     const char *arm_block;     // NULL — озброєння можливе; інакше перша невиконана умова простими словами
     const char *failsafe_cause;// NULL — не у FAILSAFE
+    const char *failsafe_exit; // NULL — не у FAILSAFE; інакше чого бракує для виходу (spec AC-08, AC-09)
 } crsf_status_view_t;
 
 // Заповнює buf багаторядковим текстом для status. Повертає довжину.

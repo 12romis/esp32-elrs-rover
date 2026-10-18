@@ -211,5 +211,8 @@ size_t crsf_fmt_status(char *buf, size_t n, const crsf_status_view_t *v)
     if (v->failsafe_cause != NULL) {
         put(buf, n, &pos, "причина FAILSAFE: %s\n", v->failsafe_cause);
     }
+    if (v->failsafe_exit != NULL) {
+        put(buf, n, &pos, "вихід з FAILSAFE: %s\n", v->failsafe_exit);
+    }
     return pos;
 }

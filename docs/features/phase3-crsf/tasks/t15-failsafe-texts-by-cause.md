@@ -9,8 +9,8 @@ files_hint: ["components/rover_console/console_core.c", "components/rover_consol
 owner: "Агент (код); Розробник (приймання на залізі)"
 estimate: "S"
 context_budget: "S"
-status: "todo"
-step: "—"
+status: "done"
+step: "COMMIT"
 ---
 
 # T15 — Пояснення FAILSAFE у відмовах і status за причиною (review F2)

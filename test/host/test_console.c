@@ -281,13 +281,13 @@ static void test_new_messages(void)
         CHECK(strstr(disarm, "стендовому") == NULL || strstr(disarm, "стендовому") > strstr(disarm, "\n  drive"));
     }
     char b[320];
-    console_fmt_denied(b, sizeof b, CONSOLE_CMD_DRIVE, APP_STATE_DISARMED);
+    console_fmt_denied(b, sizeof b, CONSOLE_CMD_DRIVE, APP_STATE_DISARMED, APP_FS_NONE);
     CHECK(strstr(b, "ARMED") && strstr(b, "DISARMED"));
-    console_fmt_denied(b, sizeof b, CONSOLE_CMD_ARM, APP_STATE_ARMED);
+    console_fmt_denied(b, sizeof b, CONSOLE_CMD_ARM, APP_STATE_ARMED, APP_FS_NONE);
     CHECK(strstr(b, "DISARMED") && strstr(b, "ARMED"));
-    console_fmt_denied(b, sizeof b, CONSOLE_CMD_ARM, APP_STATE_FAILSAFE);
+    console_fmt_denied(b, sizeof b, CONSOLE_CMD_ARM, APP_STATE_FAILSAFE, APP_FS_VOLTAGE);
     CHECK(strstr(b, "FAILSAFE") && strstr(b, "апаратн"));
-    console_fmt_denied(b, sizeof b, CONSOLE_CMD_REBOOT, APP_STATE_ARMED);
+    console_fmt_denied(b, sizeof b, CONSOLE_CMD_REBOOT, APP_STATE_ARMED, APP_FS_NONE);
     CHECK(strstr(b, "ARMED") && strstr(b, "DISARMED") && strstr(b, "BOOT"));
     CHECK(strstr(console_msg_drive_error(CONSOLE_DRIVE_RANGE), "−1") != NULL);
     CHECK(strlen(console_msg_drive_error(CONSOLE_DRIVE_BAD_NUMBER)) > 10);
@@ -419,14 +419,38 @@ static void test_beep_grammar(void)
     check_beep("beep 99999 abc", CONSOLE_UI_NOT_INTEGER, 0, 0);  // формат важливіший за діапазон
 }
 
+// T15 (review F2): у FAILSAFE відмова за станом пояснює вихід за причиною (contracts/cli.md, клас 1; AC-08, AC-09).
+static void test_failsafe_denied_by_cause(void)
+{
+    char b[320];  // як буфер console_hal
+    const console_cmd_t cmds[] = {CONSOLE_CMD_ARM, CONSOLE_CMD_DRIVE, CONSOLE_CMD_REBOOT, CONSOLE_CMD_WDT_TEST,
+                                  CONSOLE_CMD_LIGHT, CONSOLE_CMD_BEEP};
+    for (size_t i = 0; i < sizeof cmds / sizeof cmds[0]; i++) {
+        console_fmt_denied(b, sizeof b, cmds[i], APP_STATE_FAILSAFE, APP_FS_LINK_LOST);
+        CHECK(strstr(b, "FAILSAFE") && strstr(b, "пульт") && strstr(b, "DISARM") && strstr(b, "апаратн"));
+        CHECK(strstr(b, "лише апаратним") == NULL);
+        CHECK(strlen(b) < sizeof b - 1);
+        console_fmt_denied(b, sizeof b, cmds[i], APP_STATE_FAILSAFE, APP_FS_VOLTAGE);
+        CHECK(strstr(b, "лише апаратним") && strstr(b, "пульт") == NULL);
+    }
+    char w[400];  // як буфер console_hal
+    console_fmt_ui_denied(w, sizeof w, UI_DENY_STATE, APP_STATE_FAILSAFE, APP_FS_LINK_LOST);
+    CHECK(strstr(w, "пульт") && strstr(w, "DISARM") && strstr(w, "лише апаратним") == NULL && strlen(w) < sizeof w - 1);
+    console_fmt_ui_denied(w, sizeof w, UI_DENY_STATE, APP_STATE_FAILSAFE, APP_FS_VOLTAGE);
+    CHECK(strstr(w, "лише апаратним") != NULL);
+    // Поза FAILSAFE підказки про вихід немає.
+    console_fmt_denied(b, sizeof b, CONSOLE_CMD_ARM, APP_STATE_ARMED, APP_FS_NONE);
+    CHECK(strstr(b, "Вихід із FAILSAFE") == NULL);
+}
+
 static void test_ui_messages(void)
 {
     CHECK(strstr(console_help_text(), "light") && strstr(console_help_text(), "beep"));
     CHECK(strstr(console_help_text(), "head") && strstr(console_help_text(), "on"));
     char b[400];  // як буфер console_hal
-    console_fmt_denied(b, sizeof b, CONSOLE_CMD_LIGHT, APP_STATE_FAILSAFE);
+    console_fmt_denied(b, sizeof b, CONSOLE_CMD_LIGHT, APP_STATE_FAILSAFE, APP_FS_VOLTAGE);
     CHECK(strstr(b, "DISARMED") && strstr(b, "ARMED") && strstr(b, "FAILSAFE"));
-    console_fmt_denied(b, sizeof b, CONSOLE_CMD_BEEP, APP_STATE_BOOT);
+    console_fmt_denied(b, sizeof b, CONSOLE_CMD_BEEP, APP_STATE_BOOT, APP_FS_NONE);
     CHECK(strstr(b, "DISARMED") && strstr(b, "BOOT"));
     // кожна причина названа окремо (AC-05) і з переліком допустимого
     CHECK(strstr(console_msg_light_error(CONSOLE_UI_MISSING_ARGS), "бракує"));
@@ -442,16 +466,16 @@ static void test_ui_messages(void)
     CHECK(strlen(console_msg_beep_error(CONSOLE_UI_NOT_INTEGER)) > 10);
     CHECK(strstr(console_msg_beep_error(CONSOLE_UI_MISSING_ARGS), "бракує"));
     CHECK(strstr(console_msg_beep_error(CONSOLE_UI_EXTRA_ARGS), "зайві"));
-    console_fmt_ui_denied(b, sizeof b, UI_DENY_STATE, APP_STATE_FAULT);
+    console_fmt_ui_denied(b, sizeof b, UI_DENY_STATE, APP_STATE_FAULT, APP_FS_NONE);
     CHECK(strstr(b, "FAULT") && strstr(b, "DISARMED"));
-    console_fmt_ui_denied(b, sizeof b, UI_DENY_MOTION, APP_STATE_ARMED);
+    console_fmt_ui_denied(b, sizeof b, UI_DENY_MOTION, APP_STATE_ARMED, APP_FS_NONE);
     CHECK(strstr(b, "рух") && strstr(b, "DISARMED"));
-    console_fmt_ui_denied(b, sizeof b, UI_DENY_EXPANDER, APP_STATE_DISARMED);
+    console_fmt_ui_denied(b, sizeof b, UI_DENY_EXPANDER, APP_STATE_DISARMED, APP_FS_NONE);
     CHECK(strstr(b, "розширювач") && strstr(b, "недоступн") && strstr(b, "перезапуск"));  // текст не обрізано
     CHECK(strlen(b) < 380);
-    console_fmt_ui_denied(b, sizeof b, UI_DENY_STATE, APP_STATE_FAILSAFE);
+    console_fmt_ui_denied(b, sizeof b, UI_DENY_STATE, APP_STATE_FAILSAFE, APP_FS_VOLTAGE);
     CHECK(strstr(b, "апаратн") && strlen(b) < 380);
-    console_fmt_ui_denied(b, sizeof b, UI_DENY_RANGE, APP_STATE_DISARMED);
+    console_fmt_ui_denied(b, sizeof b, UI_DENY_RANGE, APP_STATE_DISARMED, APP_FS_NONE);
     CHECK(strstr(b, "200") && strstr(b, "5000"));
     char s[320];  // як буфер console_hal
     console_fmt_ui_status(s, sizeof s, true, true, false, true, true, false, true, 250);
@@ -468,6 +492,7 @@ static void test_ui_messages(void)
 
 int main(void)
 {
+    test_failsafe_denied_by_cause();
     test_line_assembly();
     test_backspace();
     test_limit_64_ok_65_overflow();

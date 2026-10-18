@@ -114,7 +114,9 @@ static size_t rc_status(char *buf, size_t n)
     v.intent = d.intent;
     v.intent.sw = d.sw_shown;   // «невідомо», поки база фронту невідома (contracts/cli.md)
     v.arm_block = d.arm_block == DRIVE_BLOCK_NONE ? NULL : drive_block_text(d.arm_block);
-    v.failsafe_cause = app_state_get() == APP_STATE_FAILSAFE ? app_failsafe_cause_name(d.failsafe_cause) : NULL;
+    bool fs = app_state_get() == APP_STATE_FAILSAFE;
+    v.failsafe_cause = fs ? app_failsafe_cause_name(d.failsafe_cause) : NULL;
+    v.failsafe_exit = fs ? drive_fsx_text(d.fsx) : NULL;   // чого бракує для виходу (spec AC-08, AC-09)
     return crsf_fmt_status(buf, n, &v);
 }
 

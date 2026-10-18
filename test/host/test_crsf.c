@@ -461,8 +461,43 @@ static void test_fmt_status(void)
     CHECK(k < sizeof(small) && strlen(small) == k);
 }
 
+// T15 (review F2): status у FAILSAFE називає, чого бракує для виходу.
+static void test_fmt_status_failsafe_exit(void)
+{
+    crsf_status_view_t v;
+    memset(&v, 0, sizeof(v));
+    char buf[800];  // як буфер console_hal
+    v.source = CRSF_SRC_REMOTE;
+    v.link = CRSF_LINK_ALIVE;
+    v.failsafe_cause = "втрата звʼязку";
+    v.failsafe_exit = "тумблер у ARM: опустіть його в DISARM";
+    crsf_fmt_status(buf, sizeof(buf), &v);
+    CHECK(has(buf, "вихід з FAILSAFE: тумблер у ARM: опустіть його в DISARM\n"));
+    v.failsafe_cause = NULL;
+    v.failsafe_exit = NULL;
+    crsf_fmt_status(buf, sizeof(buf), &v);
+    CHECK(!has(buf, "вихід з FAILSAFE"));
+    // Найгірший випадок не обрізається: усі поля найдовші.
+    memset(&v, 0, sizeof(v));
+    v.source = CRSF_SRC_NONE;
+    v.link = CRSF_LINK_LOST;
+    v.since_last_ms = 4294967295u;
+    v.snap.have_frame = true;
+    v.snap.cnt = (crsf_counters_t){4294967295u, 4294967295u, 4294967295u, 4294967295u, 4294967295u};
+    for (int i = 0; i < CRSF_CHANNELS; i++) v.snap.ch[i] = 1811;
+    v.intent.throttle = -1.0f;
+    v.intent.steer = -1.0f;
+    v.intent.sw = CRSF_SW_UNKNOWN;
+    v.arm_block = "тумблер не перемикався з DISARM: поверніть його в DISARM і знову в ARM";
+    v.failsafe_cause = "втрата звʼязку";
+    v.failsafe_exit = "після відсічки по напрузі вихід лише скиданням плати чи перемиканням живлення";
+    size_t len = crsf_fmt_status(buf, sizeof(buf), &v);
+    CHECK(len < sizeof(buf) - 1 && has(buf, "перемиканням живлення\n"));
+}
+
 int main(void)
 {
+    test_fmt_status_failsafe_exit();
     test_crc8();
     test_reference_frame();
     test_unpack_values();

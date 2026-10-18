@@ -279,7 +279,19 @@ const char *console_msg_drive_error(console_drive_result_t r)
     return "Команду drive відхилено.";
 }
 
-void console_fmt_denied(char *buf, size_t n, console_cmd_t cmd, app_state_t state)
+// Підказка про вихід із FAILSAFE за причиною (contracts/cli.md, клас 1; spec AC-08, AC-09). Поза FAILSAFE — порожньо.
+static const char *failsafe_hint(app_state_t state, app_failsafe_cause_t cause)
+{
+    if (state != APP_STATE_FAILSAFE) {
+        return "";
+    }
+    if (cause == APP_FS_LINK_LOST) {
+        return " Вихід із FAILSAFE: пультом (звʼязок 1 с без втрат, тумблер у DISARM) або апаратним скиданням плати.";
+    }
+    return " Вихід із FAILSAFE можливий лише апаратним скиданням плати або перемиканням живлення.";
+}
+
+void console_fmt_denied(char *buf, size_t n, console_cmd_t cmd, app_state_t state, app_failsafe_cause_t cause)
 {
     const char *rule;
     switch (cmd) {
@@ -291,10 +303,7 @@ void console_fmt_denied(char *buf, size_t n, console_cmd_t cmd, app_state_t stat
     case CONSOLE_CMD_BEEP:     rule = "Команда beep дозволена лише в станах DISARMED і ARMED"; break;
     default:                   rule = "Команду відхилено"; break;
     }
-    snprintf(buf, n, "%s, поточний стан: %s.%s", rule, app_state_name(state),
-             state == APP_STATE_FAILSAFE
-                 ? " Вихід із FAILSAFE можливий лише апаратним скиданням плати або перемиканням живлення."
-                 : "");
+    snprintf(buf, n, "%s, поточний стан: %s.%s", rule, app_state_name(state), failsafe_hint(state, cause));
 }
 
 void console_fmt_permille(char *buf, size_t n, int16_t permille)
@@ -482,15 +491,12 @@ const char *console_msg_beep_error(console_ui_result_t r)
     return "Команду beep відхилено: beep <частота_Гц> <тривалість_мс>.";
 }
 
-void console_fmt_ui_denied(char *buf, size_t n, ui_result_t r, app_state_t state)
+void console_fmt_ui_denied(char *buf, size_t n, ui_result_t r, app_state_t state, app_failsafe_cause_t cause)
 {
     switch (r) {
     case UI_DENY_STATE:
         snprintf(buf, n, "Світло й зумер дозволені лише в станах DISARMED і ARMED, поточний стан: %s.%s",
-                 app_state_name(state),
-                 state == APP_STATE_FAILSAFE
-                     ? " Вихід із FAILSAFE можливий лише апаратним скиданням плати або перемиканням живлення."
-                     : "");
+                 app_state_name(state), failsafe_hint(state, cause));
         break;
     case UI_DENY_MOTION:
         snprintf(buf, n, "У стані ARMED задні ліхтарі керуються рухом; вручну червоний і зелений можна вмикати лише в стані DISARMED.");
