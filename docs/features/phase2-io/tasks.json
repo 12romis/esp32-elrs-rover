@@ -1,0 +1,316 @@
+{
+  "slug": "phase2-io",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Створити i2c_bus_core: оцінка результату скану й рядок журналу",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-01",
+        "AC-02"
+      ],
+      "dod": "Хостові тести `i2c_bus_core` проходять.",
+      "files_hint": [
+        "components/i2c_bus/i2c_bus_core.c",
+        "components/i2c_bus/include/i2c_bus_core.h",
+        "test/host/test_i2c_bus.c"
+      ],
+      "file": "docs/features/phase2-io/tasks/t1-i2c-bus-core.md",
+      "status": "done"
+    },
+    {
+      "id": "T2",
+      "title": "Створити ioexp_core: тіньовий регістр, маска розрядів світла, підтвердження запису, доступність",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-15",
+        "AC-16"
+      ],
+      "dod": "Хостові тести `ioexp_core` проходять (маска, незалежність каналів, збій, недоступність).",
+      "files_hint": [
+        "components/ioexp/ioexp_core.c",
+        "components/ioexp/include/ioexp_core.h",
+        "test/host/test_ioexp.c"
+      ],
+      "file": "docs/features/phase2-io/tasks/t2-ioexp-core.md",
+      "status": "done"
+    },
+    {
+      "id": "T3",
+      "title": "Створити ui_core: задні ліхтарі за рухом, індикатор за станом, таблиця дозволів команд",
+      "layer": "domain",
+      "deps": [
+        "T2"
+      ],
+      "acs": [
+        "AC-06",
+        "AC-07",
+        "AC-17",
+        "AC-18",
+        "AC-20",
+        "AC-27"
+      ],
+      "dod": "Хостові тести покривають 63 з 63 пар «команда × стан» і 21 з 21 пар «канал × стан».",
+      "files_hint": [
+        "components/ui/ui_core.c",
+        "components/ui/include/ui_core.h",
+        "test/host/test_ui.c"
+      ],
+      "file": "docs/features/phase2-io/tasks/t3-ui-core-rear-lights-permissions.md",
+      "status": "done"
+    },
+    {
+      "id": "T4",
+      "title": "Доповнити ui_core: ручний beep, відкладений слот, сигнали переходів, FAILSAFE-блимання й писк",
+      "layer": "domain",
+      "deps": [
+        "T3"
+      ],
+      "acs": [
+        "AC-08",
+        "AC-09",
+        "AC-19",
+        "AC-21",
+        "AC-22",
+        "AC-23"
+      ],
+      "dod": "Хостові тести зумера, слота, сигналів і FAILSAFE проходять із підставним годинником.",
+      "files_hint": [
+        "components/ui/ui_core.c",
+        "components/ui/include/ui_core.h",
+        "test/host/test_ui.c"
+      ],
+      "file": "docs/features/phase2-io/tasks/t4-ui-core-buzzer-signals.md",
+      "status": "done"
+    },
+    {
+      "id": "T5",
+      "title": "Розширити console_core: розбір light і beep, порядок перевірок, help і status",
+      "layer": "domain",
+      "deps": [
+        "T3"
+      ],
+      "acs": [
+        "AC-05",
+        "AC-10",
+        "AC-13"
+      ],
+      "dod": "Хостові тести `console_core` проходять; решта команд фази 1 поводиться як раніше.",
+      "files_hint": [
+        "components/rover_console/console_core.c",
+        "components/rover_console/include/console.h",
+        "test/host/test_console.c"
+      ],
+      "file": "docs/features/phase2-io/tasks/t5-console-core-light-beep.md",
+      "status": "done"
+    },
+    {
+      "id": "T6",
+      "title": "Створити i2c_bus_hal і ioexp_hal: шина 100 кГц, мʼютекс, нуль першим, скан",
+      "layer": "infra",
+      "deps": [
+        "T1",
+        "T2"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-02",
+        "AC-03",
+        "AC-14"
+      ],
+      "dod": "`idf.py build` без помилок і нових попереджень.",
+      "files_hint": [
+        "components/i2c_bus/i2c_bus_hal.c",
+        "components/i2c_bus/include/i2c_bus_hal.h",
+        "components/i2c_bus/CMakeLists.txt",
+        "components/ioexp/ioexp_hal.c",
+        "components/ioexp/include/ioexp_hal.h",
+        "components/ioexp/CMakeLists.txt"
+      ],
+      "file": "docs/features/phase2-io/tasks/t6-i2c-bus-ioexp-hal.md",
+      "status": "done"
+    },
+    {
+      "id": "T7",
+      "title": "Додати діагностичні тести P8 (індикатор плати) і P9 (зумер) у tools/bringup",
+      "layer": "tests",
+      "deps": [],
+      "acs": [
+        "AC-08",
+        "AC-20"
+      ],
+      "dod": "`tools/bringup` збирається без помилок і нових попереджень.",
+      "files_hint": [
+        "tools/bringup/main/p8_indicator.c",
+        "tools/bringup/main/p9_buzzer.c",
+        "tools/bringup/main/bringup.h",
+        "tools/bringup/main/main.c",
+        "tools/bringup/main/CMakeLists.txt"
+      ],
+      "file": "docs/features/phase2-io/tasks/t7-bringup-p8-p9-indicator-buzzer.md",
+      "status": "done"
+    },
+    {
+      "id": "T8",
+      "title": "Створити ui_hal: задача ui, мʼютекс m_ui, опитування стану й бортів, запис розширювача",
+      "layer": "infra",
+      "deps": [
+        "T4",
+        "T6"
+      ],
+      "acs": [
+        "AC-04",
+        "AC-12",
+        "AC-15",
+        "AC-17",
+        "AC-18"
+      ],
+      "dod": "`idf.py build` без помилок і нових попереджень; `ui` не блокує `control`.",
+      "files_hint": [
+        "components/ui/ui_hal.c",
+        "components/ui/include/ui_hal.h",
+        "components/ui/CMakeLists.txt"
+      ],
+      "file": "docs/features/phase2-io/tasks/t8-ui-hal-task.md",
+      "status": "done"
+    },
+    {
+      "id": "T9",
+      "title": "Додати в ui_hal зумер: LEDC таймер 1 канал 2, низький рівень спокою, ручний і автоматичний звук",
+      "layer": "infra",
+      "deps": [
+        "T8"
+      ],
+      "acs": [
+        "AC-08",
+        "AC-11",
+        "AC-12",
+        "AC-23"
+      ],
+      "dod": "`idf.py build` без помилок і нових попереджень.",
+      "files_hint": [
+        "components/ui/ui_hal.c",
+        "components/ui/include/ui_hal.h"
+      ],
+      "file": "docs/features/phase2-io/tasks/t9-ui-hal-buzzer-ledc.md",
+      "status": "done"
+    },
+    {
+      "id": "T10",
+      "title": "Зафіксувати частоту автоматичних сигналів у ui_calib.h за результатом P9",
+      "layer": "docs",
+      "deps": [
+        "T7",
+        "T9"
+      ],
+      "acs": [
+        "AC-21",
+        "AC-22"
+      ],
+      "dod": "Константа взята з `docs/measured.md`, не вигадана.",
+      "files_hint": [
+        "components/ui/include/ui_calib.h",
+        "docs/measured.md"
+      ],
+      "file": "docs/features/phase2-io/tasks/t10-ui-calib-signal-frequency.md",
+      "status": "done"
+    },
+    {
+      "id": "T11",
+      "title": "Реалізувати драйвер індикатора плати за результатом P8 (окремий ADR)",
+      "layer": "infra",
+      "deps": [
+        "T7",
+        "T8",
+        "T9"
+      ],
+      "acs": [
+        "AC-19",
+        "AC-20"
+      ],
+      "dod": "Драйвер відповідає ADR і виміру, `idf.py build` без нових попереджень.",
+      "files_hint": [
+        "components/ui/ui_hal.c",
+        "components/board/include/board_pins.h",
+        "docs/measured.md",
+        "docs/features/phase2-io/adr/"
+      ],
+      "file": "docs/features/phase2-io/tasks/t11-indicator-driver.md",
+      "status": "done"
+    },
+    {
+      "id": "T12",
+      "title": "Підключити колбеки світла й зумера в console_hal і порядок старту в main",
+      "layer": "wiring",
+      "deps": [
+        "T5",
+        "T6",
+        "T8",
+        "T9"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-06",
+        "AC-13",
+        "AC-14"
+      ],
+      "dod": "`idf.py build` без помилок і нових попереджень.",
+      "files_hint": [
+        "components/rover_console/console_hal.c",
+        "components/rover_console/include/console_hal.h",
+        "main/main.c",
+        "main/CMakeLists.txt"
+      ],
+      "file": "docs/features/phase2-io/tasks/t12-console-hal-main-wiring.md",
+      "status": "done"
+    },
+    {
+      "id": "T13",
+      "title": "Зібрати хостовий раннер і перевірки конституції для phase2-io",
+      "layer": "tests",
+      "deps": [
+        "T1",
+        "T2",
+        "T4",
+        "T5"
+      ],
+      "acs": [
+        "AC-24",
+        "AC-25"
+      ],
+      "dod": "Раннер повідомляє кількість тестів і що всі пройдені, ≤ 5 с.",
+      "files_hint": [
+        "test/host/",
+        "test/host/run_tests.sh"
+      ],
+      "file": "docs/features/phase2-io/tasks/t13-host-tests-guardrails.md",
+      "status": "done"
+    },
+    {
+      "id": "T14",
+      "title": "Підготувати чекліст приймання фази 2 на залізі і запис у журнал bring-up",
+      "layer": "docs",
+      "deps": [
+        "T6",
+        "T8",
+        "T9",
+        "T10",
+        "T11",
+        "T12",
+        "T13"
+      ],
+      "acs": [
+        "AC-26"
+      ],
+      "dod": "`acceptance.md` існує і відповідає AC-01…AC-23.",
+      "files_hint": [
+        "docs/features/phase2-io/acceptance.md",
+        "docs/measured.md"
+      ],
+      "file": "docs/features/phase2-io/tasks/t14-acceptance-journal.md",
+      "status": "done"
+    }
+  ]
+}

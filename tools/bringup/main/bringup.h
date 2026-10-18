@@ -9,6 +9,8 @@ void test_p4_tof(void);
 void test_p5_crsf(void);
 void test_p6_encoders(void);
 void test_p7_motors(void);
+void test_p8_indicator(void);   // OQ-3: вбудований RGB-індикатор модуля
+void test_p9_buzzer(void);      // OQ-2: які частоти зумера гучні
 
 // Спільне для P6 і P7: 4 юніти PCNT у квадратурному режимі.
 // Індекси: 0=FL 1=FR 2=RL 3=RR.

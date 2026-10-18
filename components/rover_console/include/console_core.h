@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include "app_state.h"
+#include "ui_core.h"
 
 #define CONSOLE_LINE_MAX 64  // максимум символів у рядку команди (без завершального нуля)
 
@@ -36,7 +37,9 @@ typedef enum {
     CONSOLE_CMD_ARM,
     CONSOLE_CMD_DISARM,
     CONSOLE_CMD_DRIVE,
-    CONSOLE_CMD_BAD_ARGS   // drive із відсутніми, зайвими, нечисловими чи позамежними аргументами
+    CONSOLE_CMD_LIGHT,
+    CONSOLE_CMD_BEEP,
+    CONSOLE_CMD_BAD_ARGS   // drive, light чи beep із відсутніми, зайвими, нечисловими чи позамежними аргументами
 } console_cmd_t;
 
 void console_init(console_t *c);
@@ -88,3 +91,29 @@ void console_fmt_motor_status(char *buf, size_t n, uint32_t mv, bool mv_valid, i
 // Рядок про останню зупинку моторів для status (spec AC-12): reason == NULL — зупинок ще не було;
 // min_mv == 0 — напруга за час руху невідома.
 void console_fmt_last_stop(char *buf, size_t n, const char *reason, uint32_t min_mv, uint32_t t_ms);
+
+// ---------- Команди світла й зумера (spec AC-05, AC-06, AC-07, AC-10, AC-13; contracts/cli.md) ----------
+
+typedef enum {
+    CONSOLE_UI_OK,
+    CONSOLE_UI_MISSING_ARGS, // аргументів бракує
+    CONSOLE_UI_EXTRA_ARGS,   // зайві аргументи
+    CONSOLE_UI_UNKNOWN_CHANNEL,  // light: невідомий канал (регістр має значення)
+    CONSOLE_UI_UNKNOWN_ACTION,   // light: невідома дія (не on і не off)
+    CONSOLE_UI_NOT_INTEGER,  // не лише десяткові цифри: знак, дріб, експонента, 0x…, кома, зайві символи
+    CONSOLE_UI_RANGE         // ціле, але поза діапазоном зумера
+} console_ui_result_t;
+
+// Розбір «light <head|red|green> <on|off>». Вихідні значення змінюються лише при CONSOLE_UI_OK.
+console_ui_result_t console_parse_light(const char *line, ui_channel_t *ch, bool *on);
+// Розбір «beep <Гц> <мс>»: лише цифри; значення не округлюються й не обрізаються.
+console_ui_result_t console_parse_beep(const char *line, uint32_t *hz, uint32_t *dur_ms);
+
+const char *console_msg_light_error(console_ui_result_t r);
+const char *console_msg_beep_error(console_ui_result_t r);
+// Пояснення відмови ui_core: за станом (названо стан), задні ліхтарі керує рух, розширювач недоступний, діапазон.
+void console_fmt_ui_denied(char *buf, size_t n, ui_result_t r, app_state_t state);
+
+// Рядок про світло, зумер і індикатор для status (spec AC-13).
+void console_fmt_ui_status(char *buf, size_t n, bool expander_ok, bool head, bool red, bool green, bool rear_auto,
+                           bool indicator_red, bool buzzer_on, uint32_t remaining_ms);

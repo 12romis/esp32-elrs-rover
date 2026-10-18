@@ -33,6 +33,18 @@ printf '#include <stdint.h>\n#include <string.h>\n#include "foo.h"\n' >"$TMP/goo
 expect "check_core_headers ловить заборонений заголовок" nz "$HERE/check_core_headers.sh" "$TMP/bad"
 expect "check_core_headers мовчить на чистому" 0 "$HERE/check_core_headers.sh" "$TMP/good"
 
+# --- check_bus_rules.sh
+mkdir -p "$TMP/bbad1/components/ioexp" "$TMP/bbad2/components/foo" "$TMP/bbad3/components/foo" "$TMP/bgood/components/ioexp" "$TMP/bgood/components/watchdog"
+printf 'uint8_t b = 1u << 5;\n' >"$TMP/bbad1/components/ioexp/x_hal.c"
+printf '#include "driver/i2c.h"\n' >"$TMP/bbad2/components/foo/foo_hal.c"
+printf 'cfg.scl_speed_hz = 400000;\n' >"$TMP/bbad3/components/foo/foo_hal.c"
+printf 'uint8_t b = 1u << IOEXP_BIT_STOP_RED;\ncfg.scl_speed_hz = 100000;\n#include "driver/i2c_master.h"\n' >"$TMP/bgood/components/ioexp/x_hal.c"
+printf 'mask |= (1U << 0);\n' >"$TMP/bgood/components/watchdog/w_hal.c"
+expect "check_bus_rules ловить літерал розряду" nz "$HERE/check_bus_rules.sh" "$TMP/bbad1"
+expect "check_bus_rules ловить застарілий драйвер шини" nz "$HERE/check_bus_rules.sh" "$TMP/bbad2"
+expect "check_bus_rules ловить швидкість вище 100 кГц" nz "$HERE/check_bus_rules.sh" "$TMP/bbad3"
+expect "check_bus_rules мовчить на чистому" 0 "$HERE/check_bus_rules.sh" "$TMP/bgood"
+
 # --- check_pins.sh
 mkdir -p "$TMP/pbad/components/foo" "$TMP/pbad/components/board/include" "$TMP/pgood/components/foo" "$TMP/pgood/components/board/include"
 printf 'gpio_set_level(21, 1);\n' >"$TMP/pbad/components/foo/foo_hal.c"

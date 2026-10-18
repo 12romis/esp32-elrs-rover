@@ -1,5 +1,6 @@
 // Фаза 1: старт у відомому стані й керування моторами з консолі. Тільки ініціалізація, старт задач і колбеки, без логіки.
-// Порядок старту (sad.md §5): виходи моторів вимкнено першими, потім захист, консоль, вимірювання напруги, control, сховище.
+// Порядок старту (sad.md §5): виходи моторів вимкнено першими, потім нуль у розширювач (перша операція на шині), захист, консоль,
+// вимірювання напруги, control, ui, сховище.
 #include <stdio.h>
 #include <string.h>
 
@@ -7,8 +8,10 @@
 #include "battery_hal.h"
 #include "console.h"
 #include "drive_hal.h"
+#include "ioexp_hal.h"
 #include "esp_log.h"
 #include "storage_hal.h"
+#include "ui_hal.h"
 #include "watchdog_hal.h"
 
 static const char *TAG = "rover";
@@ -62,6 +65,39 @@ static void motor_status(console_motor_status_t *s)
     s->last_stop_t_ms = d.last_stop_t_ms;
 }
 
+// Колбеки світла й зумера: консоль не залежить від ui, дії передає main.
+static bool light_cmd(ui_channel_t ch, bool on, console_ui_reply_t *reply)
+{
+    if (!ui_hal_running()) {
+        return false;
+    }
+    ui_hal_reply_t r;
+    ui_hal_light(ch, on, &r);
+    *reply = (console_ui_reply_t){.result = r.result, .bus_failure = r.bus_failure, .queued = r.queued,
+                                  .head = r.head, .red = r.red, .green = r.green};
+    return true;
+}
+
+static bool beep_cmd(uint32_t hz, uint32_t dur_ms, console_ui_reply_t *reply)
+{
+    if (!ui_hal_running()) {
+        return false;
+    }
+    ui_hal_reply_t r;
+    ui_hal_beep(hz, dur_ms, &r);
+    *reply = (console_ui_reply_t){.result = r.result, .bus_failure = r.bus_failure, .queued = r.queued};
+    return true;
+}
+
+static void ui_status(console_ui_status_t *s)
+{
+    ui_hal_status_t u;
+    ui_hal_status(&u);
+    *s = (console_ui_status_t){.expander_ok = u.expander_ok, .head = u.head, .red = u.red, .green = u.green,
+                               .rear_auto = u.rear_auto, .indicator_red = u.indicator_red, .buzzer_on = u.buzzer_on,
+                               .remaining_ms = u.remaining_ms};
+}
+
 static const console_ops_t s_console_ops = {
     .storage_status = storage_status_report,
     .request_hang = watchdog_request_hang,
@@ -69,6 +105,9 @@ static const console_ops_t s_console_ops = {
     .reboot = NULL,  // esp_restart() усередині консолі
     .motor_cmd = motor_cmd,
     .motor_status = motor_status,
+    .light_cmd = light_cmd,
+    .beep_cmd = beep_cmd,
+    .ui_status = ui_status,
 };
 
 void app_main(void)
@@ -79,6 +118,9 @@ void app_main(void)
     }
     // Лінії моторів — у вимкнений стан першими (до цього STBY тримає апаратна притяжка R16).
     esp_err_t drv = drive_hal_init();
+    // Перша операція на шині — запис нуля в розширювач (конституція, п. 7): гасить світло, тримає далекоміри в скиданні.
+    // Відмова не зупиняє старт: світло недоступне, мотори, консоль і зумер працюють (ADR-0003).
+    esp_err_t iox = ioexp_start();
     ESP_LOGI(TAG, "причина останнього скидання: %s", watchdog_last_reset_reason());
 
     // Захист і консоль стартують до сховища: збій сховища має бути видимий і діагностований (ADR-0004 фази 0).
@@ -87,6 +129,7 @@ void app_main(void)
     esp_err_t bat = battery_start();
     // control стартує до storage_init, тож disarm працює і в BOOT, якщо сховище не піднялося.
     esp_err_t ctl = drv == ESP_OK ? drive_start() : drv;
+    esp_err_t ui = ui_start();  // ui лише читає стан і борти, мотори від неї не залежать
     storage_status_t storage = storage_init();
 
     if (wdt != ESP_OK || con != ESP_OK || storage == STORAGE_STATUS_UNAVAILABLE) {
@@ -95,6 +138,10 @@ void app_main(void)
         ESP_LOGE(TAG, "старт не завершено (watchdog=%s, консоль=%s, %s) — стан лишається BOOT",
                  esp_err_to_name(wdt), esp_err_to_name(con), report);
         return;
+    }
+    if (iox != ESP_OK || ui != ESP_OK) {
+        ESP_LOGW(TAG, "світло недоступне або ui не стартувала (ioexp=%s, ui=%s) — решта працює", esp_err_to_name(iox),
+                 esp_err_to_name(ui));
     }
     if (bat != ESP_OK || ctl != ESP_OK) {
         // Моторів не запущено: control не працює або напруга не вимірюється; консоль і автомат працюють, arm відхиляється.

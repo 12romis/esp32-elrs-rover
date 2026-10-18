@@ -53,6 +53,14 @@ static void do_status(void)
         console_fmt_last_stop(line, sizeof(line), ms.last_stop_reason, ms.last_stop_min_mv, ms.last_stop_t_ms);
         printf("%s\r\n", line);
     }
+    if (s_ops->ui_status) {
+        console_ui_status_t us;
+        s_ops->ui_status(&us);
+        char line[320];  // найдовший рядок ≈ 270 байтів (UTF-8)
+        console_fmt_ui_status(line, sizeof(line), us.expander_ok, us.head, us.red, us.green, us.rear_auto,
+                              us.indicator_red, us.buzzer_on, us.remaining_ms);
+        printf("%s\r\n", line);
+    }
     printf("історія переходів (%u):\r\n", (unsigned)n);
     for (size_t i = 0; i < n; i++) {
         printf("  %u мс: %s -> %s\r\n", (unsigned)hist[i].t_ms, app_state_name(hist[i].from),
@@ -90,6 +98,44 @@ static void do_motor(console_cmd_t cmd, const char *line)
     say(buf);
 }
 
+static void do_ui(console_cmd_t cmd, const char *line)
+{
+    console_ui_reply_t r = {0};
+    char buf[480];
+    bool answered;
+    if (cmd == CONSOLE_CMD_LIGHT) {
+        ui_channel_t ch = UI_CH_HEAD;
+        bool on = false;
+        (void)console_parse_light(line, &ch, &on);  // уже перевірено в console_parse
+        answered = s_ops->light_cmd != NULL && s_ops->light_cmd(ch, on, &r);
+    } else {
+        uint32_t hz = 0, dur = 0;
+        (void)console_parse_beep(line, &hz, &dur);
+        answered = s_ops->beep_cmd != NULL && s_ops->beep_cmd(hz, dur, &r);
+    }
+    if (!answered) {
+        say("Світло й зумер недоступні: керування не стартувало — команду не прийнято.");
+        return;
+    }
+    if (r.result != UI_OK) {
+        char why[400];  // найдовший текст відмови ≈ 360 байтів (UTF-8), не обрізається
+        console_fmt_ui_denied(why, sizeof(why), r.result, app_state_get());
+        snprintf(buf, sizeof(buf), "Відхилено: %s", why);
+    } else if (r.bus_failure) {
+        snprintf(buf, sizeof(buf), "Відхилено: збій шини — розширювач не підтвердив запис, стан світла не змінено (head %s, red %s, green %s).",
+                 r.head ? "ввімкнено" : "вимкнено", r.red ? "ввімкнено" : "вимкнено", r.green ? "ввімкнено" : "вимкнено");
+    } else if (cmd == CONSOLE_CMD_LIGHT) {
+        snprintf(buf, sizeof(buf), "Світло: head %s, red %s, green %s.", r.head ? "ввімкнено" : "вимкнено",
+                 r.red ? "ввімкнено" : "вимкнено", r.green ? "ввімкнено" : "вимкнено");
+    } else {
+        uint32_t hz = 0, dur = 0;
+        (void)console_parse_beep(line, &hz, &dur);
+        snprintf(buf, sizeof(buf), "Сигнал: %u Гц, %u мс%s.", (unsigned)hz, (unsigned)dur,
+                 r.queued ? " (прозвучить одразу після сигналу переходу)" : "");
+    }
+    say(buf);
+}
+
 static void execute(const char *line)
 {
     console_cmd_t cmd = console_parse(line, app_state_get());
@@ -109,10 +155,24 @@ static void execute(const char *line)
         break;
     }
     case CONSOLE_CMD_BAD_ARGS: {
-        float t, s;
-        say(console_msg_drive_error(console_parse_drive(line, &t, &s)));
+        console_cmd_t named = console_identify(line);
+        if (named == CONSOLE_CMD_LIGHT) {
+            ui_channel_t ch;
+            bool on;
+            say(console_msg_light_error(console_parse_light(line, &ch, &on)));
+        } else if (named == CONSOLE_CMD_BEEP) {
+            uint32_t hz, dur;
+            say(console_msg_beep_error(console_parse_beep(line, &hz, &dur)));
+        } else {
+            float t, s;
+            say(console_msg_drive_error(console_parse_drive(line, &t, &s)));
+        }
         break;
     }
+    case CONSOLE_CMD_LIGHT:
+    case CONSOLE_CMD_BEEP:
+        do_ui(cmd, line);
+        break;
     case CONSOLE_CMD_ARM:
     case CONSOLE_CMD_DISARM:
     case CONSOLE_CMD_DRIVE:
