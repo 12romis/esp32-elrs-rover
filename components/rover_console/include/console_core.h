@@ -82,6 +82,9 @@ const char *console_msg_drive_error(console_drive_result_t r);
 // після втрати звʼязку — пультом або скиданням, інакше лише апаратним скиданням.
 void console_fmt_denied(char *buf, size_t n, console_cmd_t cmd, app_state_t state, app_failsafe_cause_t cause);
 
+// Успішна відповідь arm. Консоль озброює лише в стендовому режимі, тож джерело завжди «стенд» (contracts/cli.md, AC-13).
+const char *console_msg_arm_ok(void);
+
 // Значення борту в проміле зі знаком → «0.30» (два знаки, округлення до найближчого, без «-0.00»).
 void console_fmt_permille(char *buf, size_t n, int16_t permille);
 

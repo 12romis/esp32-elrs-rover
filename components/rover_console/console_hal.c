@@ -96,7 +96,7 @@ static void do_motor(console_cmd_t cmd, const char *line)
     if (!r.accepted) {
         snprintf(buf, sizeof(buf), "Відхилено: %s.", r.text);
     } else if (cmd == CONSOLE_CMD_ARM) {
-        snprintf(buf, sizeof(buf), "Ровер озброєно. Рух — командою drive <тяга> <поворот>.");
+        snprintf(buf, sizeof(buf), "%s", console_msg_arm_ok());
     } else if (cmd == CONSOLE_CMD_DISARM) {
         snprintf(buf, sizeof(buf), "Мотори вимкнено: %s.", r.text);
     } else {

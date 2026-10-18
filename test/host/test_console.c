@@ -443,6 +443,13 @@ static void test_failsafe_denied_by_cause(void)
     CHECK(strstr(b, "Вихід із FAILSAFE") == NULL);
 }
 
+// T16 (review F3): успішна відповідь arm (можлива лише в стенді) називає джерело керування «стенд» (AC-13).
+static void test_arm_ok_names_bench(void)
+{
+    const char *m = console_msg_arm_ok();
+    CHECK(strstr(m, "озброєно") && strstr(m, "джерело керування: стенд") && strstr(m, "drive"));
+}
+
 static void test_ui_messages(void)
 {
     CHECK(strstr(console_help_text(), "light") && strstr(console_help_text(), "beep"));
@@ -492,6 +499,7 @@ static void test_ui_messages(void)
 
 int main(void)
 {
+    test_arm_ok_names_bench();
     test_failsafe_denied_by_cause();
     test_line_assembly();
     test_backspace();

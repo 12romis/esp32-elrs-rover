@@ -306,6 +306,11 @@ void console_fmt_denied(char *buf, size_t n, console_cmd_t cmd, app_state_t stat
     snprintf(buf, n, "%s, поточний стан: %s.%s", rule, app_state_name(state), failsafe_hint(state, cause));
 }
 
+const char *console_msg_arm_ok(void)
+{
+    return "Ровер озброєно, джерело керування: стенд. Рух — командою drive <тяга> <поворот>.";
+}
+
 void console_fmt_permille(char *buf, size_t n, int16_t permille)
 {
     int v = permille < 0 ? -(int)permille : (int)permille;
