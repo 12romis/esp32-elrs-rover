@@ -112,6 +112,7 @@ static size_t rc_status(char *buf, size_t n)
     v.link = !d.remote_active ? CRSF_LINK_NEVER : (d.link_alive ? CRSF_LINK_ALIVE : CRSF_LINK_LOST);
     v.since_last_ms = d.since_last_ms;
     v.intent = d.intent;
+    v.intent.sw = d.sw_shown;   // «невідомо», поки база фронту невідома (contracts/cli.md)
     v.arm_block = d.arm_block == DRIVE_BLOCK_NONE ? NULL : drive_block_text(d.arm_block);
     v.failsafe_cause = app_state_get() == APP_STATE_FAILSAFE ? app_failsafe_cause_name(d.failsafe_cause) : NULL;
     return crsf_fmt_status(buf, n, &v);

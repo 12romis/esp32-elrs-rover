@@ -849,6 +849,30 @@ static void test_link_age_unsigned(void)
     CHECK(c.link_alive && !o.has_state_request);
 }
 
+// T14 (review F4): тумблер у status — з бази фронту кроку керування: «невідомо» у стенді й після втрати звʼязку.
+static void test_switch_shown(void)
+{
+    drive_ctl_t c; drive_ctl_out_t o;
+    char b[640];
+    crsf_status_view_t v;
+    drive_ctl_init(&c);
+    // Стенд: кадрів не було — тумблер невідомий, а не DISARM.
+    go(&c, APP_STATE_DISARMED, 1000, snap(8000, 1000), DRIVE_REQ_NONE, 0, 0);
+    CHECK(drive_switch_shown(&c) == CRSF_SW_UNKNOWN);
+    memset(&v, 0, sizeof v);
+    v.intent.sw = drive_switch_shown(&c);
+    crsf_fmt_status(b, sizeof b, &v);
+    CHECK(strstr(b, "тумблер: невідомо") != NULL);
+    // Живий звʼязок: показ за кадром.
+    go_rc(&c, APP_STATE_DISARMED, 1020, snap(8000, 1020), rc_raw(1020, 1, NEUT, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
+    CHECK(drive_switch_shown(&c) == CRSF_SW_ARM);
+    go_rc(&c, APP_STATE_DISARMED, 1040, snap(8000, 1040), rc_raw(1040, 2, NEUT, NEUT, SW_DIS), DRIVE_REQ_NONE, 0, 0);
+    CHECK(drive_switch_shown(&c) == CRSF_SW_DISARM);
+    // Втрата звʼязку: останній кадр казав DISARM, але база фронту невідома — показ «невідомо».
+    o = go_rc(&c, APP_STATE_DISARMED, 1600, snap(8000, 1600), rc_raw(1040, 2, NEUT, NEUT, SW_DIS), DRIVE_REQ_NONE, 0, 0);
+    CHECK((o.events & DRIVE_EVT_LINK_LOST) && drive_switch_shown(&c) == CRSF_SW_UNKNOWN);
+}
+
 static void test_failsafe_exit_switch(void)
 {
     drive_ctl_t c; drive_ctl_out_t o;
@@ -1001,6 +1025,7 @@ int main(void)
     test_failsafe_exit_window();
     test_failsafe_exit_switch();
     test_link_age_unsigned();
+    test_switch_shown();
     test_failsafe_voltage_never_exits();
     test_failsafe_exit_texts();
     test_matrix_126();

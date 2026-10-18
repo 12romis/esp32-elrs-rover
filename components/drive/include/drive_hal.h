@@ -21,6 +21,7 @@ typedef struct {
     bool link_alive;
     uint32_t since_last_ms;   // час від останнього кадру каналів (лише якщо remote_active)
     crsf_intent_t intent;     // тяга, поворот, тумблер після мертвої зони
+    crsf_switch_t sw_shown;   // тумблер для status: база фронту, UNKNOWN у стенді й без звʼязку
     drive_block_t arm_block;  // що блокує озброєння з пульта зараз (DRIVE_BLOCK_NONE — можна)
     app_failsafe_cause_t failsafe_cause;
     drive_fsx_t fsx;          // чого бракує для виходу з FAILSAFE

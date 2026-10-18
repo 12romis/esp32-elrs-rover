@@ -303,6 +303,7 @@ static void control_task(void *arg)
         s_status.link_alive = ctl.link_alive;
         s_status.since_last_ms = in.rc.have_frame ? (uint32_t)(now - in.rc.t_ms) : 0;
         s_status.intent = intent;
+        s_status.sw_shown = drive_switch_shown(&ctl);
         s_status.arm_block = blk;
         s_status.failsafe_cause = in.failsafe_cause;
         s_status.fsx = fsx;

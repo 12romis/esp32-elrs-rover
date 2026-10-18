@@ -159,6 +159,9 @@ drive_block_t drive_arm_block(const drive_ctl_t *c, app_state_t st, const batter
 // Пояснення простими словами українською (для рядка журналу й status).
 const char *drive_block_text(drive_block_t b);
 
+// Тумблер для status (contracts/cli.md): база фронту кроку керування; UNKNOWN у стенді й без звʼязку (spec AC-12).
+crsf_switch_t drive_switch_shown(const drive_ctl_t *c);
+
 // Чого бракує для виходу з FAILSAFE (для status, відповіді disarm і журналу; spec AC-08, AC-09).
 typedef enum {
     DRIVE_FSX_READY,          // умови виконано: вихід у DISARMED відбудеться на цьому такті

@@ -145,6 +145,11 @@ const char *drive_block_text(drive_block_t b)
     return "?";
 }
 
+crsf_switch_t drive_switch_shown(const drive_ctl_t *c)
+{
+    return c->remote_active && c->link_alive ? c->sw_base : CRSF_SW_UNKNOWN;
+}
+
 drive_fsx_t drive_failsafe_exit_state(const drive_ctl_t *c, app_failsafe_cause_t cause, const crsf_intent_t *intent,
                                       uint32_t now_ms)
 {
