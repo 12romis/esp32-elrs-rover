@@ -61,6 +61,16 @@ static void do_status(void)
                               us.indicator_red, us.buzzer_on, us.remaining_ms);
         printf("%s\r\n", line);
     }
+    if (s_ops->rc_status) {
+        char rc[640];   // рядки про пульт: джерело, звʼязок, кадри, канали, рух, озброєння, причина FAILSAFE
+        s_ops->rc_status(rc, sizeof(rc));
+        for (char *p = rc; *p != '\0'; p++) {   // \n → \r\n для терміналу
+            if (*p == '\n') {
+                putchar('\r');
+            }
+            putchar(*p);
+        }
+    }
     printf("історія переходів (%u):\r\n", (unsigned)n);
     for (size_t i = 0; i < n; i++) {
         printf("  %u мс: %s -> %s\r\n", (unsigned)hist[i].t_ms, app_state_name(hist[i].from),
@@ -82,7 +92,7 @@ static void do_motor(console_cmd_t cmd, const char *line)
         say("Керування не відповіло — команду не прийнято.");
         return;
     }
-    char buf[200];
+    char buf[320];
     if (!r.accepted) {
         snprintf(buf, sizeof(buf), "Відхилено: %s.", r.text);
     } else if (cmd == CONSOLE_CMD_ARM) {

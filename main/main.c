@@ -42,7 +42,8 @@ static bool motor_cmd(console_motor_cmd_t cmd, float throttle, float steer, cons
     if (!r.accepted) {
         drive_reason_text(r.reason, r.mv, reply->text, sizeof(reply->text));
     } else if (cmd == CONSOLE_MOTOR_DISARM) {
-        drive_disarm_text(r.state_before, r.has_state_request, r.state_request, r.stop, reply->text, sizeof(reply->text));
+        drive_disarm_text(r.state_before, r.has_state_request, r.state_request, r.stop, r.failsafe_cause, r.fsx,
+                          r.switch_arm, reply->text, sizeof(reply->text));
     } else {
         reply->text[0] = '\0';
     }
@@ -99,6 +100,23 @@ static void ui_status(console_ui_status_t *s)
                                .remaining_ms = u.remaining_ms};
 }
 
+// Рядки status про пульт: дані знімка приймача (crsf) і кроку керування (drive); форматує crsf_core (чиста логіка).
+static size_t rc_status(char *buf, size_t n)
+{
+    drive_status_t d;
+    drive_hal_status(&d);
+    crsf_status_view_t v;
+    memset(&v, 0, sizeof(v));
+    crsf_snapshot_get(&v.snap);
+    v.source = !d.remote_active ? CRSF_SRC_BENCH : (d.link_alive ? CRSF_SRC_REMOTE : CRSF_SRC_NONE);
+    v.link = !d.remote_active ? CRSF_LINK_NEVER : (d.link_alive ? CRSF_LINK_ALIVE : CRSF_LINK_LOST);
+    v.since_last_ms = d.since_last_ms;
+    v.intent = d.intent;
+    v.arm_block = d.arm_block == DRIVE_BLOCK_NONE ? NULL : drive_block_text(d.arm_block);
+    v.failsafe_cause = app_state_get() == APP_STATE_FAILSAFE ? app_failsafe_cause_name(d.failsafe_cause) : NULL;
+    return crsf_fmt_status(buf, n, &v);
+}
+
 static const console_ops_t s_console_ops = {
     .storage_status = storage_status_report,
     .request_hang = watchdog_request_hang,
@@ -109,6 +127,7 @@ static const console_ops_t s_console_ops = {
     .light_cmd = light_cmd,
     .beep_cmd = beep_cmd,
     .ui_status = ui_status,
+    .rc_status = rc_status,
 };
 
 void app_main(void)

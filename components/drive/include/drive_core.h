@@ -150,7 +150,7 @@ void drive_reason_text(drive_reason_t r, uint32_t mv, char *buf, size_t n);
 const char *drive_stop_text(drive_stop_t s);
 
 // Пояснення відповіді на disarm (AC-09): що сталося зі станом. has_req/req — запит переходу, який видав control.
-void drive_disarm_text(app_state_t state_before, bool has_req, app_state_t req, drive_stop_t stop, char *buf, size_t n);
+
 
 // Перша невиконана умова озброєння з пульта у поточному стані (для status і журналу). NONE — озброїти можна.
 drive_block_t drive_arm_block(const drive_ctl_t *c, app_state_t st, const battery_snapshot_t *b,
@@ -171,3 +171,8 @@ typedef enum {
 drive_fsx_t drive_failsafe_exit_state(const drive_ctl_t *c, app_failsafe_cause_t cause, const crsf_intent_t *intent,
                                       uint32_t now_ms);
 const char *drive_fsx_text(drive_fsx_t x);
+
+// У FAILSAFE пояснення залежить від причини й від того, чого бракує для виходу (fsx); в ARMED з тумблером пульта в ARM
+// підказує, що для нового озброєння його треба повернути в DISARM (spec AC-08, AC-09, AC-16).
+void drive_disarm_text(app_state_t state_before, bool has_req, app_state_t req, drive_stop_t stop,
+                       app_failsafe_cause_t cause, drive_fsx_t fsx, bool switch_arm, char *buf, size_t n);

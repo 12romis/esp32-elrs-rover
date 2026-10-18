@@ -268,6 +268,18 @@ static void test_fmt(void)
 static void test_new_messages(void)
 {
     CHECK(strstr(console_help_text(), "arm") && strstr(console_help_text(), "disarm") && strstr(console_help_text(), "drive"));
+    // phase3-crsf: arm і drive лише в стендовому режимі, disarm без обмежень (AC-15).
+    {
+        const char *h = console_help_text();
+        const char *arm = strstr(h, "  arm ");
+        const char *disarm = strstr(h, "  disarm ");
+        const char *drive = strstr(h, "  drive ");
+        CHECK(arm && disarm && drive);
+        CHECK(strstr(arm, "стендовому режимі") != NULL && strstr(arm, "стендовому режимі") < disarm);
+        CHECK(strstr(drive, "стендовому режимі") != NULL);
+        CHECK(strstr(disarm, "у будь-якому стані") != NULL);
+        CHECK(strstr(disarm, "стендовому") == NULL || strstr(disarm, "стендовому") > strstr(disarm, "\n  drive"));
+    }
     char b[320];
     console_fmt_denied(b, sizeof b, CONSOLE_CMD_DRIVE, APP_STATE_DISARMED);
     CHECK(strstr(b, "ARMED") && strstr(b, "DISARMED"));

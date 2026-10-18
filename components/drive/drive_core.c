@@ -167,7 +167,7 @@ const char *drive_fsx_text(drive_fsx_t x)
 {
     switch (x) {
     case DRIVE_FSX_READY:       return "умови виходу з аварійної зупинки виконано";
-    case DRIVE_FSX_RESET_ONLY:  return "після відсічки по напрузі вихід лише апаратним скиданням плати чи перемиканням живлення";
+    case DRIVE_FSX_RESET_ONLY:  return "після відсічки по напрузі вихід лише скиданням плати чи перемиканням живлення";
     case DRIVE_FSX_NO_LINK:     return "звʼязку з пультом немає: вихід можливий після відновлення";
     case DRIVE_FSX_STABILIZING: return "звʼязок ще не стабільний: потрібна секунда без втрат";
     case DRIVE_FSX_SWITCH_ARM:  return "тумблер у ARM: опустіть його в DISARM";
@@ -436,12 +436,22 @@ const char *drive_stop_text(drive_stop_t s)
     return "немає";
 }
 
-void drive_disarm_text(app_state_t state_before, bool has_req, app_state_t req, drive_stop_t stop, char *buf, size_t n)
+void drive_disarm_text(app_state_t state_before, bool has_req, app_state_t req, drive_stop_t stop,
+                       app_failsafe_cause_t cause, drive_fsx_t fsx, bool switch_arm, char *buf, size_t n)
 {
+    (void)cause;   // пояснення виходу з FAILSAFE вже враховує причину (fsx)
     if (stop == DRIVE_STOP_LOW_VOLTAGE || stop == DRIVE_STOP_STALE_VOLTAGE) {
         snprintf(buf, n, "спрацювала відсічка по напрузі, ровер у FAILSAFE");
+    } else if (stop == DRIVE_STOP_LINK_LOST) {
+        snprintf(buf, n, "втрата звʼязку з пультом, ровер у FAILSAFE");
     } else if (has_req && req == APP_STATE_DISARMED) {
-        snprintf(buf, n, "ровер роззброєно");
+        if (switch_arm) {
+            snprintf(buf, n, "ровер роззброєно; тумблер пульта в ARM — для нового озброєння поверніть його в DISARM і знову в ARM");
+        } else {
+            snprintf(buf, n, "ровер роззброєно");
+        }
+    } else if (state_before == APP_STATE_FAILSAFE) {
+        snprintf(buf, n, "стан FAILSAFE не змінено: %s", drive_fsx_text(fsx));
     } else {
         snprintf(buf, n, "стан %s не змінено: DISARMED досяжний лише з ARMED", app_state_name(state_before));
     }

@@ -379,16 +379,30 @@ static void test_future_snapshot_and_texts(void)
     // арм зі знімком із майбутнього дозволений
     o = go(&c, APP_STATE_DISARMED, 1000, snap(8000, 1003), DRIVE_REQ_ARM, 0, 0);
     CHECK(o.accepted);
-    // текст відповіді на disarm (AC-09)
-    char b[160];
-    drive_disarm_text(APP_STATE_ARMED, true, APP_STATE_DISARMED, DRIVE_STOP_DISARM, b, sizeof b);
-    CHECK(strstr(b, "роззброєно") != NULL);
-    drive_disarm_text(APP_STATE_DISARMED, false, APP_STATE_DISARMED, DRIVE_STOP_DISARM, b, sizeof b);
+    // текст відповіді на disarm (AC-09, phase3-crsf AC-08, AC-09, AC-16)
+    char b[192];
+    drive_disarm_text(APP_STATE_ARMED, true, APP_STATE_DISARMED, DRIVE_STOP_DISARM, APP_FS_NONE, DRIVE_FSX_RESET_ONLY, false, b, sizeof b);
+    CHECK(strstr(b, "роззброєно") != NULL && strstr(b, "тумблер") == NULL);
+    drive_disarm_text(APP_STATE_ARMED, true, APP_STATE_DISARMED, DRIVE_STOP_DISARM, APP_FS_NONE, DRIVE_FSX_RESET_ONLY, true, b, sizeof b);
+    CHECK(strstr(b, "роззброєно") != NULL && strstr(b, "DISARM") != NULL && strstr(b, "знову") != NULL);   // AC-16
+    drive_disarm_text(APP_STATE_DISARMED, false, APP_STATE_DISARMED, DRIVE_STOP_DISARM, APP_FS_NONE, DRIVE_FSX_RESET_ONLY, false, b, sizeof b);
     CHECK(strstr(b, "DISARMED") != NULL && strstr(b, "лише з ARMED") != NULL);
-    drive_disarm_text(APP_STATE_FAILSAFE, false, APP_STATE_DISARMED, DRIVE_STOP_DISARM, b, sizeof b);
-    CHECK(strstr(b, "FAILSAFE") != NULL && strstr(b, "лише з ARMED") != NULL);
-    drive_disarm_text(APP_STATE_ARMED, true, APP_STATE_FAILSAFE, DRIVE_STOP_LOW_VOLTAGE, b, sizeof b);
+    // FAILSAFE: пояснення за причиною й тим, чого бракує (AC-08, AC-09).
+    drive_disarm_text(APP_STATE_FAILSAFE, false, APP_STATE_DISARMED, DRIVE_STOP_DISARM, APP_FS_VOLTAGE, DRIVE_FSX_RESET_ONLY, false, b, sizeof b);
+    CHECK(strstr(b, "FAILSAFE") != NULL && strstr(b, "скиданням") != NULL);
+    drive_disarm_text(APP_STATE_FAILSAFE, false, APP_STATE_DISARMED, DRIVE_STOP_DISARM, APP_FS_LINK_LOST, DRIVE_FSX_SWITCH_ARM, false, b, sizeof b);
+    CHECK(strstr(b, "FAILSAFE") != NULL && strstr(b, "DISARM") != NULL);
+    drive_disarm_text(APP_STATE_FAILSAFE, false, APP_STATE_DISARMED, DRIVE_STOP_DISARM, APP_FS_LINK_LOST, DRIVE_FSX_STABILIZING, false, b, sizeof b);
+    CHECK(strstr(b, "стабільн") != NULL);
+    drive_disarm_text(APP_STATE_ARMED, true, APP_STATE_FAILSAFE, DRIVE_STOP_LOW_VOLTAGE, APP_FS_VOLTAGE, DRIVE_FSX_RESET_ONLY, false, b, sizeof b);
     CHECK(strstr(b, "відсічка") != NULL && strstr(b, "FAILSAFE") != NULL);
+    drive_disarm_text(APP_STATE_ARMED, true, APP_STATE_FAILSAFE, DRIVE_STOP_LINK_LOST, APP_FS_LINK_LOST, DRIVE_FSX_NO_LINK, false, b, sizeof b);
+    CHECK(strstr(b, "звʼязку") != NULL && strstr(b, "FAILSAFE") != NULL);
+    // Усі відповіді вміщуються у буфер відповіді консолі (192 байти) без обрізання.
+    for (int f = 0; f <= DRIVE_FSX_SWITCH_ARM; f++) {
+        drive_disarm_text(APP_STATE_FAILSAFE, false, APP_STATE_DISARMED, DRIVE_STOP_DISARM, APP_FS_LINK_LOST, (drive_fsx_t)f, false, b, sizeof b);
+        CHECK(strlen(b) < sizeof b - 1);
+    }
     drive_reason_text(DRIVE_REASON_TRANSITION_REFUSED, 0, b, sizeof b);
     CHECK(strstr(b, "перехід") != NULL);
 }

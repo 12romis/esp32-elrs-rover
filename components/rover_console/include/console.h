@@ -14,7 +14,7 @@ typedef struct {
     bool accepted;
     int16_t left_permille;    // застосовані значення бортів зі знаком
     int16_t right_permille;
-    char text[96];            // пояснення відмови (або повідомлення), українською
+    char text[192];           // пояснення відмови (або повідомлення), українською; найдовше — пояснення disarm у FAILSAFE
 } console_motor_reply_t;
 
 typedef struct {
@@ -59,6 +59,8 @@ typedef struct {
     bool (*light_cmd)(ui_channel_t ch, bool on, console_ui_reply_t *reply);
     bool (*beep_cmd)(uint32_t hz, uint32_t dur_ms, console_ui_reply_t *reply);
     void (*ui_status)(console_ui_status_t *s);
+    // Рядки status про пульт (багаторядковий текст, рядки розділені \n); повертає довжину. NULL — рядків немає.
+    size_t (*rc_status)(char *buf, size_t n);
 } console_ops_t;
 
 // Встановлює драйвер USB-Serial-JTAG і стартує задачу console (core 0, пріоритет 1).
