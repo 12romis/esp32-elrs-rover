@@ -55,7 +55,7 @@ updated_at: "2026-10-18"
 | 1 | `phase1-drive` — `drive 0.3 0` крутить борти, `disarm` зупиняє, при VBAT < 6.0 В мотори не стартують | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 1 — живлення і мотори» | M | shipped — [spec](features/phase1-drive/spec.md) |
 | 2 | `phase2-io` — світло й зумер керуються з консолі, при старті світла немає | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 2 — I²C, PCF8574, світло, зумер» | S | shipped — [spec](features/phase2-io/spec.md) |
 | 3 | `phase3-crsf` — стіки пульта рухають мотори, вимкнення пульта зупиняє за 500 мс | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 3 — ELRS / CRSF» | S | shipped — [spec](features/phase3-crsf/spec.md) |
-| 4 | `phase4-encoders` — чотири лічильники дають стабільні оберти зі знаком і без зривів | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 4 — енкодери» | M | idea |
+| 4 | `phase4-encoders` — чотири лічильники дають стабільні оберти зі знаком і без зривів | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 4 — енкодери» | S | spec'd — [spec](features/phase4-encoders/spec.md) |
 | 5 | `phase5-pid` — борт тримає задану швидкість під навантаженням, коефіцієнти міняються з консолі | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 5 — PID» | M | idea |
 | 6 | `phase6-tof` — ровер зупиняється перед перешкодою, дозволяє здати назад, переживає відмову сенсора | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 6 — далекоміри й протизіткнення» | L | idea |
 | 7 | `phase7-telemetry` — пульт бачить напругу батареї, є README, блок-схема й заповнений чекліст | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 7 — телеметрія, інтеграція, документація» | S | idea |
@@ -77,7 +77,6 @@ updated_at: "2026-10-18"
 | # | Question | Type | Owner | Blocks |
 |---|---|:---:|:---:|:---:|
 | D2 | `CRSF_BAUD`: 420000 чи 416666 (§10.2) | prototype | human | 3 |
-| D3 | Тип виходу енкодера: відкритий колектор (потрібні підтяжки) чи 5 В (переробка плати) (§10.5) | prototype | human | 4, 5 |
 | D4 | Драйвер VL53L0X: порт API ST, компонент спільноти чи мінімальний власний (рекомендація документа — власний, §10.3) | prototype | agent | 6 |
 
 ## Decisions so far
@@ -87,6 +86,7 @@ updated_at: "2026-10-18"
 - Передфази P0–P7 поза циклом SDD, один проєкт `tools/bringup` з перемикачем → [`docs/02-FIRMWARE-CONTEXT.md`](02-FIRMWARE-CONTEXT.md) §7.0
 - Поточна архітектура: 1 реальний компонент і 9 заглушок → [`docs/architecture-map.md`](architecture-map.md)
 - Прозвонка моторних шлейфів пройдена (піни 1–2 обмотка ≈ 12 Ом, ізоляція до пінів 3–6) → [`docs/measured.md`](measured.md)
+- D3 закрито: вихід енкодера не відкритий колектор, усі чотири енкодери рахують без підтяжок, переробка плати не потрібна (`ENC_NEEDS_PULLUP` = 0, P6, 2026-10-17) → [`docs/measured.md`](measured.md)
 
 ## Dependency graph
 
