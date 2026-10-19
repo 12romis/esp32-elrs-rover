@@ -1,0 +1,170 @@
+{
+  "slug": "phase4-encoders",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Створити encoders_core: приріст за модулем 30000, знак колеса, 64-бітний накопичувач, обнулення через зсув",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-04",
+        "AC-09"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений, серед тестів — усі випадки з чекліста; `check_core_headers.sh` чистий для `encoders_core.c`; `idf.py build` без помилок і нових попереджень",
+      "files_hint": [
+        "components/encoders/encoders_core.c",
+        "components/encoders/include/encoders_core.h",
+        "components/encoders/include/encoders_calib.h",
+        "test/host/test_encoders.c",
+        "components/encoders/CMakeLists.txt"
+      ],
+      "file": "docs/features/phase4-encoders/tasks/t1-encoders-core-accumulate.md",
+      "status": "todo"
+    },
+    {
+      "id": "T2",
+      "title": "Додати в encoders_core швидкість колеса: приріст на фактичний час, нуль на порожньому інтервалі, лічильник інтервалів",
+      "layer": "domain",
+      "deps": [
+        "T1"
+      ],
+      "acs": [
+        "AC-02",
+        "AC-10"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений з тестами швидкості й лічильника інтервалів; `check_core_headers.sh` чистий; `idf.py build` без нових попереджень",
+      "files_hint": [
+        "components/encoders/encoders_core.c",
+        "components/encoders/include/encoders_core.h",
+        "test/host/test_encoders.c"
+      ],
+      "file": "docs/features/phase4-encoders/tasks/t2-encoders-core-speed.md",
+      "status": "todo"
+    },
+    {
+      "id": "T3",
+      "title": "Додати в encoders_core одиниці (оберти, об/хв, см, см/с), доступність коліс і тексти знімка, enc reset та рядка status",
+      "layer": "domain",
+      "deps": [
+        "T2"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-06",
+        "AC-08"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений з тестами одиниць, форматів і недоступності; `check_core_headers.sh` чистий; `idf.py build` без нових попереджень",
+      "files_hint": [
+        "components/encoders/encoders_core.c",
+        "components/encoders/include/encoders_core.h",
+        "test/host/test_encoders.c"
+      ],
+      "file": "docs/features/phase4-encoders/tasks/t3-encoders-core-units-format.md",
+      "status": "todo"
+    },
+    {
+      "id": "T4",
+      "title": "Додати в console_core команду enc: дві форми, хибні аргументи, дозвіл у всіх станах, рядок help",
+      "layer": "ports",
+      "deps": [],
+      "acs": [
+        "AC-07",
+        "AC-09"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений з тестами розбору й матриці 140 пар; `idf.py build` без нових попереджень",
+      "files_hint": [
+        "components/rover_console/console_core.c",
+        "components/rover_console/include/console_core.h",
+        "test/host/test_console.c"
+      ],
+      "file": "docs/features/phase4-encoders/tasks/t4-console-enc-command.md",
+      "status": "todo"
+    },
+    {
+      "id": "T5",
+      "title": "Створити encoders_hal: 4 блоки лічильника з watch-point без callback, фільтр 1000 нс, задача 20 мс, стан під portMUX",
+      "layer": "infra",
+      "deps": [
+        "T3"
+      ],
+      "acs": [
+        "AC-04",
+        "AC-05",
+        "AC-08"
+      ],
+      "dod": "`idf.py build` без помилок і нових попереджень; `check_pins.sh`, `check_delays.sh` чисті; приймання на залізі — у T8",
+      "files_hint": [
+        "components/encoders/encoders_hal.c",
+        "components/encoders/include/encoders_hal.h",
+        "components/encoders/CMakeLists.txt"
+      ],
+      "file": "docs/features/phase4-encoders/tasks/t5-encoders-hal-task.md",
+      "status": "todo"
+    },
+    {
+      "id": "T6",
+      "title": "Підключити encoders_start у main і колбеки enc_snapshot, enc_reset, enc_status у консоль",
+      "layer": "wiring",
+      "deps": [
+        "T4",
+        "T5"
+      ],
+      "acs": [
+        "AC-03",
+        "AC-08",
+        "AC-09"
+      ],
+      "dod": "`idf.py build` без помилок і нових попереджень; `test/host/run_tests.sh` зелений; на залізі `enc` і `enc reset` відповідають (T8)",
+      "files_hint": [
+        "main/main.c",
+        "components/rover_console/console_hal.c",
+        "components/rover_console/include/console.h",
+        "main/CMakeLists.txt"
+      ],
+      "file": "docs/features/phase4-encoders/tasks/t6-main-console-wiring.md",
+      "status": "todo"
+    },
+    {
+      "id": "T7",
+      "title": "Додати check_calib.sh (константи енкодерів проти measured.md) і прогнати всі хостові запобіжники",
+      "layer": "tests",
+      "deps": [
+        "T6"
+      ],
+      "acs": [
+        "AC-10",
+        "AC-11"
+      ],
+      "dod": "усі хостові скрипти й `run_tests.sh` зелені, `selftest_tools.sh` ловить навмисне розходження; `idf.py build` без нових попереджень",
+      "files_hint": [
+        "test/host/check_calib.sh",
+        "test/host/selftest_tools.sh"
+      ],
+      "file": "docs/features/phase4-encoders/tasks/t7-host-guardrails.md",
+      "status": "todo"
+    },
+    {
+      "id": "T8",
+      "title": "Написати acceptance.md: процедура приймання фази 4 на залізі для Розробника",
+      "layer": "docs",
+      "deps": [
+        "T6"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-02",
+        "AC-03",
+        "AC-04",
+        "AC-05",
+        "AC-06",
+        "AC-12"
+      ],
+      "dod": "`acceptance.md` має крок на кожну апаратну AC з очікуваним числом і місцем для запису; Агент не позначає T5, T6 і T8 виконаними до запису Розробника",
+      "files_hint": [
+        "docs/features/phase4-encoders/acceptance.md"
+      ],
+      "file": "docs/features/phase4-encoders/tasks/t8-acceptance-checklist.md",
+      "status": "todo"
+    }
+  ]
+}
