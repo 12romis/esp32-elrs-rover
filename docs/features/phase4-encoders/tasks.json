@@ -39,7 +39,7 @@
         "test/host/test_encoders.c"
       ],
       "file": "docs/features/phase4-encoders/tasks/t2-encoders-core-speed.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T3",
