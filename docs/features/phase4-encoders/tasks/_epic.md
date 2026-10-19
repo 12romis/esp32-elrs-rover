@@ -45,7 +45,7 @@ See [tracker.md](./tracker.md) for status. Machine contract: [tasks.json](../tas
 | T3 | Додати в encoders_core одиниці (оберти, об/хв, см, см/с), доступність коліс і тексти знімка, enc reset та рядка status | domain | T2 | `test/host/run_tests.sh` зелений з тестами одиниць, форматів і недоступності |
 | T4 | Додати в console_core команду enc: дві форми, хибні аргументи, дозвіл у всіх станах, рядок help | ports | — | `test/host/run_tests.sh` зелений з тестами розбору й матриці 140 пар |
 | T5 | Створити encoders_hal: 4 блоки лічильника з watch-point без callback, фільтр 1000 нс, задача 20 мс, стан під portMUX | infra | T3 | `idf.py build` без помилок і нових попереджень |
-| T6 | Підключити encoders_start у main і колбеки enc_snapshot, enc_reset, enc_status у консоль | wiring | T4, T5 | `idf.py build` без помилок і нових попереджень |
+| T6 | Підключити encoders_start і колбеки enc_snapshot, enc_reset, enc_status у main | wiring | T4, T5 | `idf.py build` без помилок і нових попереджень |
 | T7 | Додати check_calib.sh (константи енкодерів проти measured.md) і прогнати всі хостові запобіжники | tests | T6 | усі хостові скрипти й `run_tests.sh` зелені, `selftest_tools.sh` ловить навмисне розходження |
 | T8 | Написати acceptance.md: процедура приймання фази 4 на залізі для Розробника | docs | T6 | `acceptance.md` має крок на кожну апаратну AC з очікуваним числом і місцем для запису |
 
