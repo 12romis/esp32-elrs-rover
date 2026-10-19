@@ -1,5 +1,6 @@
 // Хостові тести encoders_core (spec AC-02, AC-04, AC-09, AC-10; ADR-0002): приріст за модулем, знак колеса, накопичувач,
-// обнулення, швидкість як приріст на фактичний час, лічильник інтервалів.
+// обнулення, швидкість як приріст на фактичний час, лічильник інтервалів; одиниці, доступність коліс, тексти
+// знімка, enc reset і status (AC-01, AC-06, AC-08).
 #include <stdint.h>
 #include <string.h>
 
@@ -299,6 +300,135 @@ static void test_interval_count_10s(void)
     CHECK(s.intervals == 500);
 }
 
+// Стан після руху вперед на n імпульсів за останні 20 мс (швидкість n / 20 мс).
+static void moved(enc_state_t *s, int64_t n)
+{
+    enc_core_init(s);
+    int32_t raw[ENC_WHEELS];
+    forward_raw(0, raw);
+    enc_core_sample(s, raw, 1000000);
+    forward_raw(n, raw);
+    enc_core_sample(s, raw, 1020000);
+}
+
+static void test_units(void)
+{
+    CHECK(enc_core_revs(27720) > 9.9999 && enc_core_revs(27720) < 10.0001);
+    // Довжина кола π × 44 мм: 10 обертів ≈ 138.23 см.
+    CHECK(enc_core_cm(27720) > 138.22 && enc_core_cm(27720) < 138.24);
+    // 2772 імп/с = 1 оберт/с = 60 об/хв ≈ 13.82 см/с.
+    CHECK(enc_core_rpm(2772.0f) > 59.999 && enc_core_rpm(2772.0f) < 60.001);
+    CHECK(enc_core_cm_s(2772.0f) > 13.82 && enc_core_cm_s(2772.0f) < 13.83);
+    CHECK(enc_core_cm(-27720) < -138.22);
+}
+
+static void test_snapshot_format(void)
+{
+    enc_state_t s;
+    moved(&s, 27720 % ENC_STEP_MAX);   // 12720 імпульсів за 20 мс
+    char buf[512];
+    size_t n = enc_core_format_snapshot(&s, buf, sizeof(buf));
+    CHECK(n == strlen(buf));
+    CHECK(strstr(buf, "1020 мс") != NULL);          // мітка вибірки в мс від старту
+    CHECK(strstr(buf, "інтервалів 1") != NULL);
+    CHECK(strstr(buf, "FL: 12720 імп, 4.59 об") != NULL);
+    // Порядок коліс FL, FR, RL, RR.
+    const char *fl = strstr(buf, "FL:"), *fr = strstr(buf, "FR:"), *rl = strstr(buf, "RL:"), *rr = strstr(buf, "RR:");
+    CHECK(fl && fr && rl && rr && fl < fr && fr < rl && rl < rr);
+    // 12720 імп за 20 мс = 636000 імп/с → 13766.2 об/хв; 4.59 об → 63.4 см; 636000 імп/с → 3171.5 см/с.
+    CHECK(strstr(buf, "13766.2 об/хв") != NULL);
+    CHECK(strstr(buf, "63.4 см,") != NULL);
+    CHECK(strstr(buf, "3171.5 см/с") != NULL);
+}
+
+static void test_snapshot_negative(void)
+{
+    enc_state_t s;
+    moved(&s, -2772);
+    char buf[512];
+    enc_core_format_snapshot(&s, buf, sizeof(buf));
+    CHECK(strstr(buf, "RR: -2772 імп, -1.00 об") != NULL);
+    CHECK(strstr(buf, "-13.8 см,") != NULL);
+}
+
+static void test_snapshot_before_first_sample(void)
+{
+    enc_state_t s;
+    enc_core_init(&s);
+    char buf[512];
+    enc_core_format_snapshot(&s, buf, sizeof(buf));
+    CHECK(strstr(buf, "вибірок ще не було") != NULL);
+}
+
+static void test_unavailable_wheel_in_snapshot(void)
+{
+    enc_state_t s;
+    enc_core_init(&s);
+    enc_core_set_unavailable(&s, ENC_FR, "ESP_ERR_NOT_FOUND");
+    CHECK(enc_core_available_count(&s) == 3);
+    int32_t raw[ENC_WHEELS];
+    forward_raw(0, raw);
+    enc_core_sample(&s, raw, 0);
+    forward_raw(500, raw);
+    enc_core_sample(&s, raw, 20000);
+    char buf[512];
+    enc_core_format_snapshot(&s, buf, sizeof(buf));
+    CHECK(strstr(buf, "FR: недоступне — ESP_ERR_NOT_FOUND") != NULL);
+    const char *fr = strstr(buf, "FR:");
+    const char *eol = fr ? strchr(fr, '\n') : NULL;
+    CHECK(fr && eol && memchr(fr, '0', (size_t)(eol - fr)) == NULL);   // жодних нулів, що виглядають як виміряні
+    CHECK(strstr(buf, "FL: 500 імп") != NULL);
+    CHECK(strstr(buf, "RR: 500 імп") != NULL);
+}
+
+static void test_all_unavailable(void)
+{
+    enc_state_t s;
+    enc_core_init(&s);
+    for (int i = 0; i < ENC_WHEELS; i++) enc_core_set_unavailable(&s, (enc_wheel_t)i, "задача encoders не запущена");
+    char buf[512];
+    enc_core_format_snapshot(&s, buf, sizeof(buf));
+    CHECK(strstr(buf, "RL: недоступне — задача encoders не запущена") != NULL);
+    enc_core_reset(&s);
+    enc_core_format_reset(&s, buf, sizeof(buf));
+    CHECK(strstr(buf, "обнуляти нічого") != NULL);
+    CHECK(strstr(buf, "FL, FR, RL, RR") != NULL);
+    enc_core_format_status(&s, buf, sizeof(buf));
+    CHECK(strstr(buf, "0 з 4 доступні") != NULL);
+}
+
+static void test_reset_and_status_texts(void)
+{
+    enc_state_t s;
+    enc_core_init(&s);
+    char buf[256];
+    enc_core_format_reset(&s, buf, sizeof(buf));
+    CHECK(strstr(buf, "обнулено") != NULL && strstr(buf, "недоступн") == NULL);
+    enc_core_format_status(&s, buf, sizeof(buf));
+    CHECK(strstr(buf, "4 з 4 доступні") != NULL && strstr(buf, "недоступні:") == NULL);
+    enc_core_set_unavailable(&s, ENC_FR, "x");
+    enc_core_set_unavailable(&s, ENC_RR, "y");
+    enc_core_format_reset(&s, buf, sizeof(buf));
+    CHECK(strstr(buf, "FL, RL") != NULL);
+    CHECK(strstr(buf, "недоступні: FR, RR") != NULL);
+    enc_core_format_status(&s, buf, sizeof(buf));
+    CHECK(strstr(buf, "2 з 4 доступні, недоступні: FR, RR") != NULL);
+    CHECK(strstr(buf, "x") == NULL);   // status без причини
+}
+
+static void test_format_truncates(void)
+{
+    enc_state_t s;
+    moved(&s, 100);
+    char buf[24];
+    memset(buf, 'Z', sizeof(buf));
+    size_t n = enc_core_format_snapshot(&s, buf, 16);
+    CHECK(n < 16 && buf[n] == '\0' && buf[16] == 'Z');
+    n = enc_core_format_status(&s, buf, 8);
+    CHECK(n < 8 && buf[n] == '\0');
+    CHECK(enc_core_format_reset(&s, buf, 0) == 0);
+}
+
 int main(void)
 {
     test_delta();
@@ -316,5 +446,13 @@ int main(void)
     test_speed_timestamp_wrap();
     test_reset_keeps_speed();
     test_interval_count_10s();
+    test_units();
+    test_snapshot_format();
+    test_snapshot_negative();
+    test_snapshot_before_first_sample();
+    test_unavailable_wheel_in_snapshot();
+    test_all_unavailable();
+    test_reset_and_status_texts();
+    test_format_truncates();
     return test_summary();
 }

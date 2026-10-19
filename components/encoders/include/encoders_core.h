@@ -15,7 +15,7 @@ typedef enum { ENC_FL = 0, ENC_FR = 1, ENC_RL = 2, ENC_RR = 3 } enc_wheel_t;
 
 typedef struct {
     bool available;      // колесо налаштоване й рахує
-    char reason[40];     // причина недоступності (порожньо, якщо доступне)
+    char reason[64];     // причина недоступності, UTF-8 (порожньо, якщо доступне)
     int32_t last_raw;    // попереднє сире значення апаратного лічильника
     int64_t accum;       // накопичувач зі знаком колеса від старту
     int64_t offset;      // зсув обнулення: показ = accum − offset
@@ -46,3 +46,24 @@ void enc_core_reset(enc_state_t *s);
 
 // Показ лічильника колеса в імпульсах (накопичувач − зсув).
 int64_t enc_core_count(const enc_state_t *s, enc_wheel_t wheel);
+
+// Позначає колесо недоступним з причиною (назва помилки драйвера чи текст); вибірки й обнулення його пропускають.
+void enc_core_set_unavailable(enc_state_t *s, enc_wheel_t wheel, const char *reason);
+
+// Скільки коліс доступні (0…4).
+unsigned enc_core_available_count(const enc_state_t *s);
+
+// Перерахунок одиниць (ENC_PULSES_PER_REV, WHEEL_DIAMETER_MM з encoders_calib.h).
+double enc_core_revs(int64_t count);     // оберти колеса
+double enc_core_cm(int64_t count);       // пройдена відстань, см
+double enc_core_rpm(float speed_pps);    // оберти колеса за хвилину
+double enc_core_cm_s(float speed_pps);   // лінійна швидкість, см/с
+
+// Тексти для консолі (contracts/cli.md). Пишуть у буфер виклику, обрізають за його розміром, завжди завершують нулем
+// (якщо n > 0) і повертають довжину записаного тексту.
+// Знімок енкодерів: мітка останньої вибірки й лічильник інтервалів, далі по рядку на колесо FL, FR, RL, RR.
+size_t enc_core_format_snapshot(const enc_state_t *s, char *buf, size_t n);
+// Відповідь enc reset (викликати після enc_core_reset): що обнулено, і перелік недоступних коліс.
+size_t enc_core_format_reset(const enc_state_t *s, char *buf, size_t n);
+// Рядок status: «енкодери: N з 4 доступні[, недоступні: …]», без причин.
+size_t enc_core_format_status(const enc_state_t *s, char *buf, size_t n);
