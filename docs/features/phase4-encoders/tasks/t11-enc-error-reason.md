@@ -9,8 +9,8 @@ files_hint: ["components/rover_console/console_core.c", "components/rover_consol
 owner: "Агент"
 estimate: "S"
 context_budget: "S"
-status: "todo"
-step: "—"
+status: "done"
+step: "COMMIT"
 ---
 
 # T11 — Відмова enc називає причину (review F2)

@@ -63,8 +63,18 @@ const char *console_help_text(void);
 const char *console_msg_unknown(void);
 const char *console_msg_extra_args(void);
 const char *console_msg_overflow(void);
-// Пояснення хибної форми команди enc із переліком двох допустимих форм (spec AC-07).
-const char *console_msg_enc_error(void);
+// Розбір команди enc (contracts/cli.md): дві допустимі форми і три причини хибної.
+typedef enum {
+    CONSOLE_ENC_SNAPSHOT,      // «enc»
+    CONSOLE_ENC_RESET,         // «enc reset»
+    CONSOLE_ENC_UNKNOWN_WORD,  // невідоме друге слово
+    CONSOLE_ENC_RESET_TYPO,    // помилка в reset: інший регістр, обрізане чи подовжене слово (Reset, rese, resetx)
+    CONSOLE_ENC_EXTRA_WORD     // третє слово
+} console_enc_result_t;
+
+console_enc_result_t console_parse_enc(const char *line);
+// Пояснення хибної форми команди enc: що саме не так і обидві допустимі форми (spec AC-07).
+const char *console_msg_enc_error(console_enc_result_t r);
 // Пояснення відмови за станом для команди REBOOT або WDT_TEST.
 const char *console_msg_denied(console_cmd_t cmd);
 

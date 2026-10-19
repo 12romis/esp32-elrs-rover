@@ -223,7 +223,7 @@
         "test/host/test_console.c"
       ],
       "file": "docs/features/phase4-encoders/tasks/t11-enc-error-reason.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T12",

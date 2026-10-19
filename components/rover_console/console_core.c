@@ -130,15 +130,11 @@ console_cmd_t console_parse(const char *line, app_state_t state)
     }
     if (cmd == CONSOLE_CMD_ENC) {
         // Дозволена в усіх станах (моторами не керує); форми лише «enc» і «enc reset» (contracts/cli.md).
-        if (!has_args) {
-            return CONSOLE_CMD_ENC;
+        switch (console_parse_enc(line)) {
+        case CONSOLE_ENC_SNAPSHOT: return CONSOLE_CMD_ENC;
+        case CONSOLE_ENC_RESET:    return CONSOLE_CMD_ENC_RESET;
+        default:                   return CONSOLE_CMD_BAD_ARGS;
         }
-        const char *end = rest;
-        while (*end != '\0' && !is_space(*end)) end++;
-        const char *tail = end;
-        while (is_space(*tail)) tail++;
-        bool is_reset = (size_t)(end - rest) == 5 && strncmp(rest, "reset", 5) == 0;
-        return (is_reset && *tail == '\0') ? CONSOLE_CMD_ENC_RESET : CONSOLE_CMD_BAD_ARGS;
     }
     if (has_args) {
         return CONSOLE_CMD_EXTRA_ARGS;
@@ -185,9 +181,22 @@ const char *console_msg_overflow(void)
     return "Рядок задовгий (максимум 64 символи) — відкинуто повністю, нічого не виконано.";
 }
 
-const char *console_msg_enc_error(void)
+#define ENC_USAGE " Допустимо: «enc» — знімок енкодерів, «enc reset» — обнулити лічильники й відстань."
+
+const char *console_msg_enc_error(console_enc_result_t r)
 {
-    return "Хибна форма команди enc. Допустимо: «enc» — знімок енкодерів, «enc reset» — обнулити лічильники й відстань.";
+    switch (r) {
+    case CONSOLE_ENC_UNKNOWN_WORD:
+        return "Команда enc: невідоме друге слово." ENC_USAGE;
+    case CONSOLE_ENC_RESET_TYPO:
+        return "Команда enc: друге слово схоже на reset, але записане інакше — має бути саме reset малими літерами (регістр має значення)." ENC_USAGE;
+    case CONSOLE_ENC_EXTRA_WORD:
+        return "Команда enc: зайве третє слово — після enc можна лише одне слово reset." ENC_USAGE;
+    case CONSOLE_ENC_SNAPSHOT:
+    case CONSOLE_ENC_RESET:
+        break;
+    }
+    return "Хибна форма команди enc." ENC_USAGE;
 }
 
 const char *console_msg_denied(console_cmd_t cmd)
@@ -450,6 +459,41 @@ static bool parse_digits(const char *t, size_t n, uint32_t *out)
     }
     *out = v;
     return true;
+}
+
+// Слово схоже на reset: той самий текст без урахування регістру, або одне з двох — початок іншого (щонайменше 3 літери).
+static bool like_reset(const char *t, size_t n)
+{
+    static const char word[] = "reset";
+    size_t common = n < 5 ? n : 5;
+    if (common < 3) {
+        return false;
+    }
+    for (size_t i = 0; i < common; i++) {
+        char c = t[i];
+        if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+        if (c != word[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+console_enc_result_t console_parse_enc(const char *line)
+{
+    const char *tok[1];
+    size_t len[1];
+    int n = split_args(line, tok, len, 1);
+    if (n == 0) {
+        return CONSOLE_ENC_SNAPSHOT;
+    }
+    if (n > 1) {
+        return CONSOLE_ENC_EXTRA_WORD;
+    }
+    if (tok_is(tok[0], len[0], "reset")) {
+        return CONSOLE_ENC_RESET;
+    }
+    return like_reset(tok[0], len[0]) ? CONSOLE_ENC_RESET_TYPO : CONSOLE_ENC_UNKNOWN_WORD;
 }
 
 console_ui_result_t console_parse_beep(const char *line, uint32_t *hz, uint32_t *dur_ms)

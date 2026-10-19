@@ -203,7 +203,7 @@ static void execute(const char *line)
             uint32_t hz, dur;
             say(console_msg_beep_error(console_parse_beep(line, &hz, &dur)));
         } else if (named == CONSOLE_CMD_ENC) {
-            say(console_msg_enc_error());
+            say(console_msg_enc_error(console_parse_enc(line)));
         } else {
             float t, s;
             say(console_msg_drive_error(console_parse_drive(line, &t, &s)));
