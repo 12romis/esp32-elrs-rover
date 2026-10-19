@@ -497,8 +497,33 @@ static void test_ui_messages(void)
     CHECK(strlen(s) <= 5);
 }
 
+// ---------- phase4-encoders T4: команда enc (contracts/cli.md; spec AC-07, AC-09) ----------
+static void test_enc_command(void)
+{
+    for (int st = 0; st < APP_STATE_COUNT; st++) {
+        app_state_t a = (app_state_t)st;
+        CHECK(console_parse("enc", a) == CONSOLE_CMD_ENC);
+        CHECK(console_parse("enc   ", a) == CONSOLE_CMD_ENC);
+        CHECK(console_parse("enc reset", a) == CONSOLE_CMD_ENC_RESET);
+        CHECK(console_parse("  enc   reset  ", a) == CONSOLE_CMD_ENC_RESET);
+        CHECK(console_parse("enc foo", a) == CONSOLE_CMD_BAD_ARGS);
+        CHECK(console_parse("enc Reset", a) == CONSOLE_CMD_BAD_ARGS);
+        CHECK(console_parse("enc RESET", a) == CONSOLE_CMD_BAD_ARGS);
+        CHECK(console_parse("enc reset x", a) == CONSOLE_CMD_BAD_ARGS);
+        CHECK(console_parse("enc resetx", a) == CONSOLE_CMD_BAD_ARGS);
+        CHECK(console_parse("enc rese", a) == CONSOLE_CMD_BAD_ARGS);
+    }
+    CHECK(console_identify("enc foo") == CONSOLE_CMD_ENC);
+    CHECK(console_parse("encx", APP_STATE_DISARMED) == CONSOLE_CMD_UNKNOWN);
+    CHECK(console_parse("Enc", APP_STATE_DISARMED) == CONSOLE_CMD_UNKNOWN);
+    const char *m = console_msg_enc_error();
+    CHECK(strstr(m, "enc reset") != NULL && strstr(m, "знімок") != NULL && strstr(m, "обнул") != NULL);
+    CHECK(strstr(console_help_text(), "enc [reset]") != NULL);
+}
+
 int main(void)
 {
+    test_enc_command();
     test_arm_ok_names_bench();
     test_failsafe_denied_by_cause();
     test_line_assembly();

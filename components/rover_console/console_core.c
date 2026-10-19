@@ -90,6 +90,7 @@ static console_cmd_t first_word(const char *line, const char **rest)
     if (n == 5 && strncmp(start, "drive", n) == 0) return CONSOLE_CMD_DRIVE;
     if (n == 5 && strncmp(start, "light", n) == 0) return CONSOLE_CMD_LIGHT;
     if (n == 4 && strncmp(start, "beep", n) == 0) return CONSOLE_CMD_BEEP;
+    if (n == 3 && strncmp(start, "enc", n) == 0) return CONSOLE_CMD_ENC;
     return CONSOLE_CMD_UNKNOWN;
 }
 
@@ -127,6 +128,18 @@ console_cmd_t console_parse(const char *line, app_state_t state)
                                                           : console_parse_beep(line, &hz, &dur);
         return r == CONSOLE_UI_OK ? cmd : CONSOLE_CMD_BAD_ARGS;
     }
+    if (cmd == CONSOLE_CMD_ENC) {
+        // Дозволена в усіх станах (моторами не керує); форми лише «enc» і «enc reset» (contracts/cli.md).
+        if (!has_args) {
+            return CONSOLE_CMD_ENC;
+        }
+        const char *end = rest;
+        while (*end != '\0' && !is_space(*end)) end++;
+        const char *tail = end;
+        while (is_space(*tail)) tail++;
+        bool is_reset = (size_t)(end - rest) == 5 && strncmp(rest, "reset", 5) == 0;
+        return (is_reset && *tail == '\0') ? CONSOLE_CMD_ENC_RESET : CONSOLE_CMD_BAD_ARGS;
+    }
     if (has_args) {
         return CONSOLE_CMD_EXTRA_ARGS;
     }
@@ -153,7 +166,8 @@ const char *console_help_text(void)
            "  disarm    — вимкнути мотори й роззброїти (у будь-якому стані)\n"
            "  drive <тяга> <поворот> — рух, значення від -1 до 1, діє 2 с (лише в стані ARMED і в стендовому режимі, до появи пульта)\n"
            "  light <head|red|green> <on|off> — світло: фари, червоний чи зелений задній ліхтар (DISARMED; в ARMED лише head)\n"
-           "  beep <Гц> <мс> — сигнал зумера, цілі числа: 200–5000 Гц і 1–2000 мс (DISARMED і ARMED)";
+           "  beep <Гц> <мс> — сигнал зумера, цілі числа: 200–5000 Гц і 1–2000 мс (DISARMED і ARMED)\n"
+           "  enc [reset] — знімок енкодерів коліс; reset обнуляє лічильники й відстань (у будь-якому стані)";
 }
 
 const char *console_msg_unknown(void)
@@ -169,6 +183,11 @@ const char *console_msg_extra_args(void)
 const char *console_msg_overflow(void)
 {
     return "Рядок задовгий (максимум 64 символи) — відкинуто повністю, нічого не виконано.";
+}
+
+const char *console_msg_enc_error(void)
+{
+    return "Хибна форма команди enc. Допустимо: «enc» — знімок енкодерів, «enc reset» — обнулити лічильники й відстань.";
 }
 
 const char *console_msg_denied(console_cmd_t cmd)

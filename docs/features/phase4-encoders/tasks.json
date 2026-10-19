@@ -75,10 +75,13 @@
       "files_hint": [
         "components/rover_console/console_core.c",
         "components/rover_console/include/console_core.h",
-        "test/host/test_console.c"
+        "test/host/test_console.c",
+        "components/rover_console/console_hal.c",
+        "components/rover_console/include/console.h",
+        "test/host/test_drive.c"
       ],
       "file": "docs/features/phase4-encoders/tasks/t4-console-enc-command.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T5",
@@ -103,7 +106,7 @@
     },
     {
       "id": "T6",
-      "title": "Підключити encoders_start у main і колбеки enc_snapshot, enc_reset, enc_status у консоль",
+      "title": "Підключити encoders_start і колбеки enc_snapshot, enc_reset, enc_status у main",
       "layer": "wiring",
       "deps": [
         "T4",
@@ -117,8 +120,6 @@
       "dod": "`idf.py build` без помилок і нових попереджень; `test/host/run_tests.sh` зелений; на залізі `enc` і `enc reset` відповідають (T8)",
       "files_hint": [
         "main/main.c",
-        "components/rover_console/console_hal.c",
-        "components/rover_console/include/console.h",
         "main/CMakeLists.txt"
       ],
       "file": "docs/features/phase4-encoders/tasks/t6-main-console-wiring.md",

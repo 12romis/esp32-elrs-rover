@@ -39,7 +39,9 @@ typedef enum {
     CONSOLE_CMD_DRIVE,
     CONSOLE_CMD_LIGHT,
     CONSOLE_CMD_BEEP,
-    CONSOLE_CMD_BAD_ARGS   // drive, light чи beep із відсутніми, зайвими, нечисловими чи позамежними аргументами
+    CONSOLE_CMD_BAD_ARGS,  // drive, light, beep чи enc із відсутніми, зайвими, нечисловими чи позамежними аргументами
+    CONSOLE_CMD_ENC,       // знімок енкодерів (phase4-encoders, contracts/cli.md)
+    CONSOLE_CMD_ENC_RESET  // обнулення лічильників енкодерів
 } console_cmd_t;
 
 void console_init(console_t *c);
@@ -61,6 +63,8 @@ const char *console_help_text(void);
 const char *console_msg_unknown(void);
 const char *console_msg_extra_args(void);
 const char *console_msg_overflow(void);
+// Пояснення хибної форми команди enc із переліком двох допустимих форм (spec AC-07).
+const char *console_msg_enc_error(void);
 // Пояснення відмови за станом для команди REBOOT або WDT_TEST.
 const char *console_msg_denied(console_cmd_t cmd);
 

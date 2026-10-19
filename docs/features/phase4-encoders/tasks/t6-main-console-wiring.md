@@ -1,11 +1,11 @@
 ---
 id: T6
-title: "Підключити encoders_start у main і колбеки enc_snapshot, enc_reset, enc_status у консоль"
+title: "Підключити encoders_start і колбеки enc_snapshot, enc_reset, enc_status у main"
 layer: "wiring"
 deps: ["T4", "T5"]
 blocks: ["T7", "T8"]
 acs: ["AC-03", "AC-08", "AC-09"]
-files_hint: ["main/main.c", "components/rover_console/console_hal.c", "components/rover_console/include/console.h", "main/CMakeLists.txt"]
+files_hint: ["main/main.c", "main/CMakeLists.txt"]
 owner: "Агент (код); Розробник (приймання на залізі)"
 estimate: "S"
 context_budget: "M"
@@ -86,6 +86,8 @@ No DB changes.
 > — `spec.md §5, AC-09, verbatim` · full text: [spec.md](../spec.md)
 
 ## Checklist
+
+> Під час implement (2026-10-19): колбеки `console_ops_t` і обробку `enc` у `console_hal.c` зроблено в T4 (зв'язок компіляцією); тут лишається підключення в `main`.
 
 - [ ] Додати три колбеки в `console_ops_t` — `components/rover_console/include/console.h`
 - [ ] Викликати колбеки на `enc`, `enc reset` і в `status`; NULL-колбек — «енкодери не підключені» — `console_hal.c`

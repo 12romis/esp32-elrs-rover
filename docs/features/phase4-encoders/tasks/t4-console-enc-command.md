@@ -5,12 +5,12 @@ layer: "ports"
 deps: []
 blocks: ["T6"]
 acs: ["AC-07", "AC-09"]
-files_hint: ["components/rover_console/console_core.c", "components/rover_console/include/console_core.h", "test/host/test_console.c"]
+files_hint: ["components/rover_console/console_core.c", "components/rover_console/include/console_core.h", "test/host/test_console.c", "components/rover_console/console_hal.c", "components/rover_console/include/console.h", "test/host/test_drive.c"]
 owner: "Агент"
 estimate: "S"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 <!-- To the executing agent: work from what is inlined here. If a slice is insufficient, ambiguous, or contradicts the code in front of you, open the named file for the full text and follow that. Do not invent the missing part. -->
@@ -81,6 +81,8 @@ No DB changes.
 > — `spec.md §5, AC-09, verbatim` · full text: [spec.md](../spec.md)
 
 ## Checklist
+
+> Під час implement (2026-10-19): нові значення `console_cmd_t` ламають `switch` у `console_hal.c` (`-Werror=switch`), тож обробку `enc` у HAL консолі й три колбеки `console_ops_t` перенесено з T6 у T4 — задачі зв'язані компіляцією.
 
 - [ ] Додати `CONSOLE_CMD_ENC` і, за потреби, `CONSOLE_CMD_ENC_RESET` у перелік команд — `console_core.h`
 - [ ] Розпізнати перше слово `enc`, друге слово `reset` або порожньо; інше — `CONSOLE_CMD_BAD_ARGS` з текстом про допустимі форми — `console_core.c`
