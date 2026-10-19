@@ -142,7 +142,7 @@
         "test/host/selftest_tools.sh"
       ],
       "file": "docs/features/phase4-encoders/tasks/t7-host-guardrails.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T8",

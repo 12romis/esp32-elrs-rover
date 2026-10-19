@@ -19,5 +19,6 @@ test/host/run_tests.sh
 | `check_bus_rules.sh` | розряди розширювача лише з `board_pins.h`, без застарілих драйверів шини, шина ≤ 100 кГц (AC-25 phase2-io, constitution пп. 2, 5, 14) |
 | `check_protected.sh` | захищені файли не змінені без згоди (AC-10, constitution п. 10–11) |
 | `check_delays.sh` | періодичні задачі без `vTaskDelay` — лише `vTaskDelayUntil` (phase3-crsf AC-19, constitution п. 14) |
+| `check_calib.sh` | константи `encoders_calib.h` мають рядок у `docs/measured.md` з тим самим значенням (phase4-encoders AC-11, constitution пп. 3, 13) |
 
 `selftest_tools.sh` перевіряє самі скрипти на навмисно поганих прикладах у тимчасовому каталозі.

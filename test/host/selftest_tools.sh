@@ -70,5 +70,20 @@ expect "check_protected ловить зміну sdkconfig.defaults" nz "$HERE/ch
 expect "check_protected ловить закомічену зміну відносно main" nz "$HERE/check_protected.sh" "$TMP/repo"
 expect "ALLOW_PROTECTED=1 дозволяє" 0 env ALLOW_PROTECTED=1 "$HERE/check_protected.sh" "$TMP/repo"
 
+# --- check_calib.sh (phase4-encoders T7, AC-11): константи енкодерів мають рядок у docs/measured.md з тим самим значенням
+mkdir -p "$TMP/cgood/components/encoders/include" "$TMP/cgood/docs" "$TMP/cbad1/components/encoders/include" "$TMP/cbad1/docs" \
+         "$TMP/cbad2/components/encoders/include" "$TMP/cbad2/docs" "$TMP/cbad3/components/encoders/include" "$TMP/cbad3/docs"
+CAL='#define ENC_PULSES_PER_REV 2772\n#define ENC_DIR_SIGN { +1, -1, +1, -1 }\n#define WHEEL_DIAMETER_MM 44\n'
+MEAS='| `ENC_PULSES_PER_REV` | **2772** імпульси |\n| `ENC_DIR_SIGN[4]` підтверджено | **+1, −1, +1, −1** |\n| `WHEEL_DIAMETER_MM` | **44** мм |\n'
+printf "$CAL" >"$TMP/cgood/components/encoders/include/encoders_calib.h"; printf "$MEAS" >"$TMP/cgood/docs/measured.md"
+printf "$CAL" | sed 's/WHEEL_DIAMETER_MM 44/WHEEL_DIAMETER_MM 43/' >"$TMP/cbad1/components/encoders/include/encoders_calib.h"; printf "$MEAS" >"$TMP/cbad1/docs/measured.md"
+printf "$CAL" >"$TMP/cbad2/components/encoders/include/encoders_calib.h"; printf "$MEAS" | grep -v WHEEL >"$TMP/cbad2/docs/measured.md"
+printf "$CAL" | sed 's/+1, -1, +1, -1/+1, +1, +1, -1/' >"$TMP/cbad3/components/encoders/include/encoders_calib.h"; printf "$MEAS" >"$TMP/cbad3/docs/measured.md"
+expect "check_calib ловить розходження значення (43 проти 44)" nz "$HERE/check_calib.sh" "$TMP/cbad1"
+expect "check_calib ловить константу без рядка в measured.md" nz "$HERE/check_calib.sh" "$TMP/cbad2"
+expect "check_calib ловить розходження знаків коліс" nz "$HERE/check_calib.sh" "$TMP/cbad3"
+expect "check_calib мовчить на узгоджених значеннях" 0 "$HERE/check_calib.sh" "$TMP/cgood"
+expect "check_calib мовчить на репозиторії" 0 "$HERE/check_calib.sh"
+
 [ $fail -eq 0 ] && echo "selftest_tools: усе гаразд" || echo "selftest_tools: ЄСТЬ ПОМИЛКИ"
 exit $fail
