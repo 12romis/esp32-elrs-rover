@@ -69,7 +69,7 @@ void enc_core_set_unavailable(enc_state_t *s, enc_wheel_t wheel, const char *rea
 {
     enc_wheel_state_t *w = &s->w[wheel];
     w->available = false;
-    snprintf(w->reason, sizeof(w->reason), "%s", reason ? reason : "невідома причина");
+    w->reason = reason ? reason : "невідома причина";
     w->speed_pps = 0.0f;
 }
 

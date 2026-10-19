@@ -418,6 +418,22 @@ static void test_unavailable_wheel_in_snapshot(void)
     CHECK(strstr(buf, "RR: 500 імп") != NULL);
 }
 
+static void test_reason_not_copied(void)
+{
+    // Review F5: причина — вказівник на рядок статичного часу життя, а не копія в стані (знімок < 200 байтів, sad.md §4).
+    static const char why[] = "ESP_ERR_TIMEOUT";
+    enc_state_t s;
+    enc_core_init(&s);
+    CHECK(sizeof(s.w[0].reason) == sizeof(const char *));
+    enc_core_set_unavailable(&s, ENC_RL, why);
+    CHECK(s.w[ENC_RL].reason == why);
+    enc_core_set_unavailable(&s, ENC_RR, NULL);
+    char buf[512];
+    enc_core_format_snapshot(&s, buf, sizeof(buf));
+    CHECK(strstr(buf, "RL: недоступне — ESP_ERR_TIMEOUT") != NULL);
+    CHECK(strstr(buf, "RR: недоступне — невідома причина") != NULL);
+}
+
 static void test_all_unavailable(void)
 {
     enc_state_t s;
@@ -489,6 +505,7 @@ int main(void)
     test_snapshot_negative();
     test_snapshot_before_first_sample();
     test_unavailable_wheel_in_snapshot();
+    test_reason_not_copied();
     test_all_unavailable();
     test_reset_and_status_texts();
     test_format_truncates();

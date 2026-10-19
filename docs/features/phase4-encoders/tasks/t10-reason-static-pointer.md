@@ -9,8 +9,8 @@ files_hint: ["components/encoders/encoders_core.c", "components/encoders/include
 owner: "Агент"
 estimate: "S"
 context_budget: "S"
-status: "todo"
-step: "—"
+status: "done"
+step: "COMMIT"
 ---
 
 # T10 — Причина недоступності без копії рядка (review F5)

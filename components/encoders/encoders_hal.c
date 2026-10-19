@@ -32,6 +32,9 @@ static pcnt_unit_handle_t s_unit[ENC_WHEELS];
 static enc_state_t s_state;                     // під s_mux: пише задача encoders, обнуляє консоль
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 
+// Стан копіюється цілком під spinlock: тримаємо його малим (sad.md §4, review F5).
+_Static_assert(sizeof(enc_state_t) < 200, "стан енкодерів має бути менший за 200 байтів");
+
 // Налаштування одного колеса як у P6 (×4 через два канали), але без accum_count: watch-point на межах без callback
 // лише вмикають апаратні порівнювачі меж, тож лічильник скидається в нуль на ±ENC_HW_LIMIT (ADR-0002). Підтяжки не
 // вмикаються (ENC_NEEDS_PULLUP = 0, P6). Повертає першу помилку; частково налаштований блок лишається як є (лише на старті).
