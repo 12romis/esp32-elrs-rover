@@ -102,7 +102,7 @@
         "components/encoders/CMakeLists.txt"
       ],
       "file": "docs/features/phase4-encoders/tasks/t5-encoders-hal-task.md",
-      "status": "todo"
+      "status": "review"
     },
     {
       "id": "T6",
