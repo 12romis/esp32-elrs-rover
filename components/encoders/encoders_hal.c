@@ -12,7 +12,7 @@
 
 static const char *TAG = "encoders";
 
-#define ENC_PERIOD_MS 20
+#define ENC_PERIOD_MS (ENC_PERIOD_US / 1000)   // період задачі — номінал вибірки з encoders_core.h
 #define ENC_STACK 3072
 #define ENC_PRIORITY 4
 #define ENC_CORE 1

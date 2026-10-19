@@ -9,8 +9,8 @@ files_hint: ["components/encoders/encoders_core.c", "components/encoders/include
 owner: "Агент (код); Розробник (приймання на залізі)"
 estimate: "S"
 context_budget: "S"
-status: "todo"
-step: "—"
+status: "done"
+step: "COMMIT"
 ---
 
 # T9 — Швидкість лише за інтервал не коротший за половину номіналу (review F1)

@@ -261,6 +261,43 @@ static void test_speed_same_timestamp(void)
     CHECK(enc_core_count(&s, ENC_FL) == 150);
 }
 
+static void test_speed_catchup_burst(void)
+{
+    // Review F1: після паузи задачі vTaskDelayUntil наздоганяє — вибірки через десятки мкс. Вони накопичують рух,
+    // але інтервалом не є: швидкість без викиду, рух коротких вибірок входить у наступний інтервал.
+    CHECK(ENC_PERIOD_US == 20000);
+    CHECK(ENC_MIN_INTERVAL_US == ENC_PERIOD_US / 2);
+    enc_state_t s;
+    enc_core_init(&s);
+    int32_t raw[ENC_WHEELS];
+    forward_raw(0, raw);
+    enc_core_sample(&s, raw, 0);
+    forward_raw(600, raw);
+    enc_core_sample(&s, raw, 60000);   // пауза 60 мс: 600 імпульсів за 60 мс = 10000 імп/с
+    CHECK(s.w[ENC_FL].speed_pps > 9999.9f && s.w[ENC_FL].speed_pps < 10000.1f);
+    CHECK(s.intervals == 1);
+    forward_raw(601, raw);
+    enc_core_sample(&s, raw, 60050);   // наздоганяння: 1 імпульс за 50 мкс дав би 20000 імп/с
+    CHECK(s.w[ENC_FL].speed_pps > 9999.9f && s.w[ENC_FL].speed_pps < 10000.1f);
+    enc_core_sample(&s, raw, 60100);   // наздоганяння без руху дав би хибний нуль
+    CHECK(s.w[ENC_FL].speed_pps > 9999.9f && s.w[ENC_FL].speed_pps < 10000.1f);
+    CHECK(s.intervals == 1);
+    CHECK(s.last_us == 60000);
+    CHECK(enc_core_count(&s, ENC_FL) == 601);
+    // Наступна вибірка за 20 мс від мітки: 1 імпульс коротких вибірок + 199 нових = 200 за 20 мс = 10000 імп/с.
+    forward_raw(800, raw);
+    enc_core_sample(&s, raw, 80000);
+    for (int i = 0; i < ENC_WHEELS; i++) CHECK(s.w[i].speed_pps > 9999.9f && s.w[i].speed_pps < 10000.1f);
+    CHECK(s.intervals == 2);
+    // Межа: рівно ENC_MIN_INTERVAL_US — уже інтервал, на 1 мкс менше — ще ні.
+    forward_raw(900, raw);
+    enc_core_sample(&s, raw, 80000 + ENC_MIN_INTERVAL_US - 1);
+    CHECK(s.intervals == 2);
+    enc_core_sample(&s, raw, 80000 + ENC_MIN_INTERVAL_US);
+    CHECK(s.intervals == 3);
+    CHECK(s.w[ENC_RR].speed_pps > 9999.9f && s.w[ENC_RR].speed_pps < 10000.1f);   // 100 імп за 10 мс
+}
+
 static void test_speed_timestamp_wrap(void)
 {
     // Мітка в мкс біля переповнення 64 біт: беззнакова різниця дає правильний проміжок.
@@ -443,6 +480,7 @@ int main(void)
     test_speed_zero_after_stop();
     test_speed_backward_negative();
     test_speed_same_timestamp();
+    test_speed_catchup_burst();
     test_speed_timestamp_wrap();
     test_reset_keeps_speed();
     test_interval_count_10s();
