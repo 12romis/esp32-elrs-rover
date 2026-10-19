@@ -9,8 +9,8 @@ files_hint: ["docs/features/phase4-encoders/acceptance.md"]
 owner: "Розробник (процедура приймання й записи)"
 estimate: "S"
 context_budget: "M"
-status: "review"
-step: "COMMIT — чекає приймання Розробника"
+status: "done"
+step: "COMMIT"
 ---
 
 <!-- To the executing agent: work from what is inlined here. If a slice is insufficient, ambiguous, or contradicts the code in front of you, open the named file for the full text and follow that. Do not invent the missing part. -->

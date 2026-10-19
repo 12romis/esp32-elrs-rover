@@ -102,7 +102,7 @@
         "components/encoders/CMakeLists.txt"
       ],
       "file": "docs/features/phase4-encoders/tasks/t5-encoders-hal-task.md",
-      "status": "review"
+      "status": "done"
     },
     {
       "id": "T6",
@@ -123,7 +123,7 @@
         "main/CMakeLists.txt"
       ],
       "file": "docs/features/phase4-encoders/tasks/t6-main-console-wiring.md",
-      "status": "review"
+      "status": "done"
     },
     {
       "id": "T7",
@@ -165,7 +165,7 @@
         "docs/features/phase4-encoders/acceptance.md"
       ],
       "file": "docs/features/phase4-encoders/tasks/t8-acceptance-checklist.md",
-      "status": "review"
+      "status": "done"
     },
     {
       "id": "T9",

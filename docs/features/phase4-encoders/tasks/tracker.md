@@ -12,10 +12,10 @@
 | T2 | Додати в encoders_core швидкість колеса: приріст на фактичний час, нуль на порожньому інтервалі, лічильник інтервалів | domain | Агент | S | T1 | done | COMMIT |
 | T3 | Додати в encoders_core одиниці (оберти, об/хв, см, см/с), доступність коліс і тексти знімка, enc reset та рядка status | domain | Агент | M | T2 | done | COMMIT |
 | T4 | Додати в console_core команду enc: дві форми, хибні аргументи, дозвіл у всіх станах, рядок help | ports | Агент | S | — | done | COMMIT |
-| T5 | Створити encoders_hal: 4 блоки лічильника з watch-point без callback, фільтр 1000 нс, задача 20 мс, стан під portMUX | infra | Агент | M | T3 | review | COMMIT — чекає приймання на залізі (T8) |
-| T6 | Підключити encoders_start і колбеки enc_snapshot, enc_reset, enc_status у main | wiring | Агент | S | T4, T5 | review | COMMIT — чекає приймання на залізі (T8) |
+| T5 | Створити encoders_hal: 4 блоки лічильника з watch-point без callback, фільтр 1000 нс, задача 20 мс, стан під portMUX | infra | Агент | M | T3 | done | COMMIT |
+| T6 | Підключити encoders_start і колбеки enc_snapshot, enc_reset, enc_status у main | wiring | Агент | S | T4, T5 | done | COMMIT |
 | T7 | Додати check_calib.sh (константи енкодерів проти measured.md) і прогнати всі хостові запобіжники | tests | Агент | S | T6 | done | COMMIT |
-| T8 | Написати acceptance.md: процедура приймання фази 4 на залізі для Розробника | docs | Розробник | S | T6 | review | COMMIT — чекає приймання Розробника |
+| T8 | Написати acceptance.md: процедура приймання фази 4 на залізі для Розробника | docs | Розробник | S | T6 | done | COMMIT |
 | T9 | Швидкість лише за інтервал не коротший за половину номіналу, з усім рухом від попередньої мітки (review F1) | domain | Агент | S | — | done | COMMIT |
 | T10 | Причина недоступності — вказівник на статичний рядок замість копії, стан енкодерів < 200 байтів (review F5) | domain | Агент | S | T9 | done | COMMIT |
 | T11 | Відмова enc називає, що саме не так: невідоме слово, помилка в reset, зайве слово (review F2) | ports | Агент | S | — | done | COMMIT |
