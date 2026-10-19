@@ -238,7 +238,7 @@
         "docs/features/phase4-encoders/acceptance.md"
       ],
       "file": "docs/features/phase4-encoders/tasks/t12-acceptance-failsafe-runtime.md",
-      "status": "todo"
+      "status": "done"
     }
   ]
 }

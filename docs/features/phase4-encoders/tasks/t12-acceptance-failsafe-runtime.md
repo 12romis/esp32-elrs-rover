@@ -9,8 +9,8 @@ files_hint: ["docs/features/phase4-encoders/acceptance.md"]
 owner: "Агент (документ); Розробник (приймання на залізі)"
 estimate: "S"
 context_budget: "S"
-status: "todo"
-step: "—"
+status: "done"
+step: "COMMIT"
 ---
 
 # T12 — Крок FAILSAFE і час прогону в acceptance.md (review F3, F4)
