@@ -28,6 +28,34 @@ static void say(const char *text)
     fflush(stdout);
 }
 
+// Друкує багаторядковий текст, перетворюючи \n на \r\n для терміналу.
+static void put_lines(const char *text)
+{
+    for (const char *p = text; *p != '\0'; p++) {
+        if (*p == '\n') {
+            putchar('\r');
+        }
+        putchar(*p);
+    }
+}
+
+// Знімок енкодерів або обнулення (contracts/cli.md). Буфер static — не на стеку консолі, викликає лише вона.
+static void do_enc(console_cmd_t cmd)
+{
+    static char text[640];   // заголовок + 4 рядки коліс ≈ 400 байтів (UTF-8)
+    size_t (*op)(char *, size_t) = cmd == CONSOLE_CMD_ENC_RESET ? s_ops->enc_reset : s_ops->enc_snapshot;
+    if (op == NULL) {
+        say("Енкодери не підключені.");
+        return;
+    }
+    size_t n = op(text, sizeof(text));
+    put_lines(text);
+    if (n == 0 || text[n - 1] != '\n') {
+        printf("\r\n");
+    }
+    fflush(stdout);
+}
+
 static void do_status(void)
 {
     uint64_t up_s = (uint64_t)(esp_timer_get_time() / 1000000);
@@ -64,12 +92,13 @@ static void do_status(void)
     if (s_ops->rc_status) {
         static char rc[800];   // рядки про пульт (зокрема вихід з FAILSAFE); static — не на стеку консолі, викликає лише вона
         s_ops->rc_status(rc, sizeof(rc));
-        for (char *p = rc; *p != '\0'; p++) {   // \n → \r\n для терміналу
-            if (*p == '\n') {
-                putchar('\r');
-            }
-            putchar(*p);
-        }
+        put_lines(rc);
+    }
+    if (s_ops->enc_status) {
+        char enc[160];   // «енкодери: 0 з 4 доступні, недоступні: FL, FR, RL, RR» ≈ 90 байтів (UTF-8)
+        s_ops->enc_status(enc, sizeof(enc));
+        put_lines(enc);
+        printf("\r\n");
     }
     printf("історія переходів (%u):\r\n", (unsigned)n);
     for (size_t i = 0; i < n; i++) {
@@ -173,6 +202,8 @@ static void execute(const char *line)
         } else if (named == CONSOLE_CMD_BEEP) {
             uint32_t hz, dur;
             say(console_msg_beep_error(console_parse_beep(line, &hz, &dur)));
+        } else if (named == CONSOLE_CMD_ENC) {
+            say(console_msg_enc_error(console_parse_enc(line)));
         } else {
             float t, s;
             say(console_msg_drive_error(console_parse_drive(line, &t, &s)));
@@ -187,6 +218,10 @@ static void execute(const char *line)
     case CONSOLE_CMD_DISARM:
     case CONSOLE_CMD_DRIVE:
         do_motor(cmd, line);
+        break;
+    case CONSOLE_CMD_ENC:
+    case CONSOLE_CMD_ENC_RESET:
+        do_enc(cmd);
         break;
     case CONSOLE_CMD_HELP:
         say(console_help_text());

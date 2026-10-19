@@ -497,8 +497,59 @@ static void test_ui_messages(void)
     CHECK(strlen(s) <= 5);
 }
 
+// ---------- phase4-encoders T4: команда enc (contracts/cli.md; spec AC-07, AC-09) ----------
+static void test_enc_command(void)
+{
+    for (int st = 0; st < APP_STATE_COUNT; st++) {
+        app_state_t a = (app_state_t)st;
+        CHECK(console_parse("enc", a) == CONSOLE_CMD_ENC);
+        CHECK(console_parse("enc   ", a) == CONSOLE_CMD_ENC);
+        CHECK(console_parse("enc reset", a) == CONSOLE_CMD_ENC_RESET);
+        CHECK(console_parse("  enc   reset  ", a) == CONSOLE_CMD_ENC_RESET);
+        CHECK(console_parse("enc foo", a) == CONSOLE_CMD_BAD_ARGS);
+        CHECK(console_parse("enc Reset", a) == CONSOLE_CMD_BAD_ARGS);
+        CHECK(console_parse("enc RESET", a) == CONSOLE_CMD_BAD_ARGS);
+        CHECK(console_parse("enc reset x", a) == CONSOLE_CMD_BAD_ARGS);
+        CHECK(console_parse("enc resetx", a) == CONSOLE_CMD_BAD_ARGS);
+        CHECK(console_parse("enc rese", a) == CONSOLE_CMD_BAD_ARGS);
+    }
+    CHECK(console_identify("enc foo") == CONSOLE_CMD_ENC);
+    CHECK(console_parse("encx", APP_STATE_DISARMED) == CONSOLE_CMD_UNKNOWN);
+    CHECK(console_parse("Enc", APP_STATE_DISARMED) == CONSOLE_CMD_UNKNOWN);
+    CHECK(strstr(console_help_text(), "enc [reset]") != NULL);
+}
+
+// Review F2: відмова enc називає, що саме не так (contracts/cli.md: невідоме друге слово, помилка в reset, третє слово).
+static void test_enc_error_reason(void)
+{
+    CHECK(console_parse_enc("enc") == CONSOLE_ENC_SNAPSHOT);
+    CHECK(console_parse_enc("  enc  ") == CONSOLE_ENC_SNAPSHOT);
+    CHECK(console_parse_enc("enc reset") == CONSOLE_ENC_RESET);
+    CHECK(console_parse_enc("enc foo") == CONSOLE_ENC_UNKNOWN_WORD);
+    CHECK(console_parse_enc("enc re") == CONSOLE_ENC_UNKNOWN_WORD);
+    CHECK(console_parse_enc("enc Reset") == CONSOLE_ENC_RESET_TYPO);
+    CHECK(console_parse_enc("enc RESET") == CONSOLE_ENC_RESET_TYPO);
+    CHECK(console_parse_enc("enc rese") == CONSOLE_ENC_RESET_TYPO);
+    CHECK(console_parse_enc("enc resetx") == CONSOLE_ENC_RESET_TYPO);
+    CHECK(console_parse_enc("enc reset x") == CONSOLE_ENC_EXTRA_WORD);
+    CHECK(console_parse_enc("enc foo bar") == CONSOLE_ENC_EXTRA_WORD);
+
+    const console_enc_result_t bad[] = { CONSOLE_ENC_UNKNOWN_WORD, CONSOLE_ENC_RESET_TYPO, CONSOLE_ENC_EXTRA_WORD };
+    const char *hint[] = { "невідоме", "reset", "зайв" };
+    for (int i = 0; i < 3; i++) {
+        const char *m = console_msg_enc_error(bad[i]);
+        CHECK(strstr(m, hint[i]) != NULL);
+        CHECK(strstr(m, "«enc»") != NULL && strstr(m, "«enc reset»") != NULL);   // обидві допустимі форми
+        CHECK(strstr(m, "знімок") != NULL && strstr(m, "обнул") != NULL);
+        for (int j = 0; j < i; j++) CHECK(strcmp(m, console_msg_enc_error(bad[j])) != 0);
+    }
+    CHECK(strstr(console_msg_enc_error(CONSOLE_ENC_RESET_TYPO), "регістр") != NULL);
+}
+
 int main(void)
 {
+    test_enc_command();
+    test_enc_error_reason();
     test_arm_ok_names_bench();
     test_failsafe_denied_by_cause();
     test_line_assembly();

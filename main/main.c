@@ -9,6 +9,7 @@
 #include "console.h"
 #include "crsf_hal.h"
 #include "drive_hal.h"
+#include "encoders_hal.h"
 #include "ioexp_hal.h"
 #include "esp_log.h"
 #include "storage_hal.h"
@@ -131,6 +132,9 @@ static const console_ops_t s_console_ops = {
     .beep_cmd = beep_cmd,
     .ui_status = ui_status,
     .rc_status = rc_status,
+    .enc_snapshot = encoders_snapshot_text,
+    .enc_reset = encoders_reset_text,
+    .enc_status = encoders_status_text,
 };
 
 void app_main(void)
@@ -148,6 +152,12 @@ void app_main(void)
 
     // Захист і консоль стартують до сховища: збій сховища має бути видимий і діагностований (ADR-0004 фази 0).
     esp_err_t wdt = watchdog_start();
+    // Енкодери (ADR-0001 фази 4): власна задача, незалежна від control; стартують до консолі, щоб перший `enc` уже бачив
+    // стан. Збій не зупиняє старт: недоступні колеса показуються в `enc` і `status` (spec AC-08).
+    esp_err_t enc = encoders_start();
+    if (enc != ESP_OK) {
+        ESP_LOGW(TAG, "енкодери стартували не повністю (%s) — подробиці в enc, ровер працює далі", esp_err_to_name(enc));
+    }
     esp_err_t con = console_start(&s_console_ops);
     esp_err_t bat = battery_start();
     // control стартує до storage_init, тож disarm працює і в BOOT, якщо сховище не піднялося.

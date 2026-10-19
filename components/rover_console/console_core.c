@@ -90,6 +90,7 @@ static console_cmd_t first_word(const char *line, const char **rest)
     if (n == 5 && strncmp(start, "drive", n) == 0) return CONSOLE_CMD_DRIVE;
     if (n == 5 && strncmp(start, "light", n) == 0) return CONSOLE_CMD_LIGHT;
     if (n == 4 && strncmp(start, "beep", n) == 0) return CONSOLE_CMD_BEEP;
+    if (n == 3 && strncmp(start, "enc", n) == 0) return CONSOLE_CMD_ENC;
     return CONSOLE_CMD_UNKNOWN;
 }
 
@@ -127,6 +128,14 @@ console_cmd_t console_parse(const char *line, app_state_t state)
                                                           : console_parse_beep(line, &hz, &dur);
         return r == CONSOLE_UI_OK ? cmd : CONSOLE_CMD_BAD_ARGS;
     }
+    if (cmd == CONSOLE_CMD_ENC) {
+        // Дозволена в усіх станах (моторами не керує); форми лише «enc» і «enc reset» (contracts/cli.md).
+        switch (console_parse_enc(line)) {
+        case CONSOLE_ENC_SNAPSHOT: return CONSOLE_CMD_ENC;
+        case CONSOLE_ENC_RESET:    return CONSOLE_CMD_ENC_RESET;
+        default:                   return CONSOLE_CMD_BAD_ARGS;
+        }
+    }
     if (has_args) {
         return CONSOLE_CMD_EXTRA_ARGS;
     }
@@ -153,7 +162,8 @@ const char *console_help_text(void)
            "  disarm    — вимкнути мотори й роззброїти (у будь-якому стані)\n"
            "  drive <тяга> <поворот> — рух, значення від -1 до 1, діє 2 с (лише в стані ARMED і в стендовому режимі, до появи пульта)\n"
            "  light <head|red|green> <on|off> — світло: фари, червоний чи зелений задній ліхтар (DISARMED; в ARMED лише head)\n"
-           "  beep <Гц> <мс> — сигнал зумера, цілі числа: 200–5000 Гц і 1–2000 мс (DISARMED і ARMED)";
+           "  beep <Гц> <мс> — сигнал зумера, цілі числа: 200–5000 Гц і 1–2000 мс (DISARMED і ARMED)\n"
+           "  enc [reset] — знімок енкодерів коліс; reset обнуляє лічильники й відстань (у будь-якому стані)";
 }
 
 const char *console_msg_unknown(void)
@@ -169,6 +179,24 @@ const char *console_msg_extra_args(void)
 const char *console_msg_overflow(void)
 {
     return "Рядок задовгий (максимум 64 символи) — відкинуто повністю, нічого не виконано.";
+}
+
+#define ENC_USAGE " Допустимо: «enc» — знімок енкодерів, «enc reset» — обнулити лічильники й відстань."
+
+const char *console_msg_enc_error(console_enc_result_t r)
+{
+    switch (r) {
+    case CONSOLE_ENC_UNKNOWN_WORD:
+        return "Команда enc: невідоме друге слово." ENC_USAGE;
+    case CONSOLE_ENC_RESET_TYPO:
+        return "Команда enc: друге слово схоже на reset, але записане інакше — має бути саме reset малими літерами (регістр має значення)." ENC_USAGE;
+    case CONSOLE_ENC_EXTRA_WORD:
+        return "Команда enc: зайве третє слово — після enc можна лише одне слово reset." ENC_USAGE;
+    case CONSOLE_ENC_SNAPSHOT:
+    case CONSOLE_ENC_RESET:
+        break;
+    }
+    return "Хибна форма команди enc." ENC_USAGE;
 }
 
 const char *console_msg_denied(console_cmd_t cmd)
@@ -431,6 +459,41 @@ static bool parse_digits(const char *t, size_t n, uint32_t *out)
     }
     *out = v;
     return true;
+}
+
+// Слово схоже на reset: той самий текст без урахування регістру, або одне з двох — початок іншого (щонайменше 3 літери).
+static bool like_reset(const char *t, size_t n)
+{
+    static const char word[] = "reset";
+    size_t common = n < 5 ? n : 5;
+    if (common < 3) {
+        return false;
+    }
+    for (size_t i = 0; i < common; i++) {
+        char c = t[i];
+        if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+        if (c != word[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+console_enc_result_t console_parse_enc(const char *line)
+{
+    const char *tok[1];
+    size_t len[1];
+    int n = split_args(line, tok, len, 1);
+    if (n == 0) {
+        return CONSOLE_ENC_SNAPSHOT;
+    }
+    if (n > 1) {
+        return CONSOLE_ENC_EXTRA_WORD;
+    }
+    if (tok_is(tok[0], len[0], "reset")) {
+        return CONSOLE_ENC_RESET;
+    }
+    return like_reset(tok[0], len[0]) ? CONSOLE_ENC_RESET_TYPO : CONSOLE_ENC_UNKNOWN_WORD;
 }
 
 console_ui_result_t console_parse_beep(const char *line, uint32_t *hz, uint32_t *dur_ms)

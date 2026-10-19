@@ -999,7 +999,8 @@ static void test_failsafe_exit_texts(void)
     CHECK(strlen(drive_fsx_text(DRIVE_FSX_READY)) > 0);
 }
 
-// ---------- phase3-crsf T11: матриця «команда × стан × режим керування», 126 пар (spec §6, AC-15) ----------
+// ---------- phase3-crsf T11 / phase4-encoders T4: матриця «команда × стан × режим керування», 140 пар
+// (phase3 spec §6, AC-15; phase4 contracts/cli.md: 10 команд × 7 станів × 2 режими) ----------
 
 // Наскрізний результат: консоль пропускає за станом і (для arm, drive, disarm) керування приймає в цьому режимі.
 static bool end_to_end_allowed(const char *line, app_state_t st, bool remote)
@@ -1009,7 +1010,7 @@ static bool end_to_end_allowed(const char *line, app_state_t st, bool remote)
         return false;
     }
     if (cmd != CONSOLE_CMD_ARM && cmd != CONSOLE_CMD_DRIVE && cmd != CONSOLE_CMD_DISARM) {
-        return true;   // help, status, reboot, wdt-test, light, beep: режим керування їх не стосується
+        return true;   // help, status, reboot, wdt-test, light, beep, enc: режим керування їх не стосується
     }
     drive_ctl_t c;
     drive_ctl_init(&c);
@@ -1026,13 +1027,14 @@ static bool end_to_end_allowed(const char *line, app_state_t st, bool remote)
     return o.accepted;
 }
 
-static void test_matrix_126(void)
+static void test_matrix_140(void)
 {
-    const char *lines[9] = {"help", "status", "reboot", "wdt-test", "arm", "disarm", "drive 0.3 0", "light head on", "beep 1000 100"};
+    const char *lines[10] = {"help", "status", "reboot", "wdt-test", "arm", "disarm", "drive 0.3 0", "light head on",
+                             "beep 1000 100", "enc"};
     int pairs = 0;
     for (int m = 0; m < 2; m++) {
         bool remote = m == 1;
-        for (int i = 0; i < 9; i++) {
+        for (int i = 0; i < 10; i++) {
             for (int s = 0; s < APP_STATE_COUNT; s++) {
                 app_state_t st = (app_state_t)s;
                 bool dis = st == APP_STATE_DISARMED, arm = st == APP_STATE_ARMED;
@@ -1044,15 +1046,16 @@ static void test_matrix_126(void)
                 case 4: want = dis && !remote; break;                                // arm: лише стенд
                 case 5: want = true; break;                                          // disarm: завжди
                 case 6: want = arm && !remote; break;                                // drive: лише стенд
-                default: want = dis || arm; break;                                   // light head, beep
+                case 7: case 8: want = dis || arm; break;                            // light head, beep
+                default: want = true; break;                                         // enc: усі стани й режими
                 }
                 CHECK(end_to_end_allowed(lines[i], st, remote) == want);
                 pairs++;
             }
         }
     }
-    CHECK(pairs == 126);
-    printf("ПОКРИТТЯ пар команда × стан × режим: %d з 126\n", pairs);
+    CHECK(pairs == 140);
+    printf("ПОКРИТТЯ пар команда × стан × режим: %d з 140\n", pairs);
 }
 
 int main(void)
@@ -1091,6 +1094,6 @@ int main(void)
     test_latency_stats();
     test_failsafe_voltage_never_exits();
     test_failsafe_exit_texts();
-    test_matrix_126();
+    test_matrix_140();
     return test_summary();
 }

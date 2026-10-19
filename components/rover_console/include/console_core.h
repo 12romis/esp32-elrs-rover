@@ -39,7 +39,9 @@ typedef enum {
     CONSOLE_CMD_DRIVE,
     CONSOLE_CMD_LIGHT,
     CONSOLE_CMD_BEEP,
-    CONSOLE_CMD_BAD_ARGS   // drive, light чи beep із відсутніми, зайвими, нечисловими чи позамежними аргументами
+    CONSOLE_CMD_BAD_ARGS,  // drive, light, beep чи enc із відсутніми, зайвими, нечисловими чи позамежними аргументами
+    CONSOLE_CMD_ENC,       // знімок енкодерів (phase4-encoders, contracts/cli.md)
+    CONSOLE_CMD_ENC_RESET  // обнулення лічильників енкодерів
 } console_cmd_t;
 
 void console_init(console_t *c);
@@ -61,6 +63,18 @@ const char *console_help_text(void);
 const char *console_msg_unknown(void);
 const char *console_msg_extra_args(void);
 const char *console_msg_overflow(void);
+// Розбір команди enc (contracts/cli.md): дві допустимі форми і три причини хибної.
+typedef enum {
+    CONSOLE_ENC_SNAPSHOT,      // «enc»
+    CONSOLE_ENC_RESET,         // «enc reset»
+    CONSOLE_ENC_UNKNOWN_WORD,  // невідоме друге слово
+    CONSOLE_ENC_RESET_TYPO,    // помилка в reset: інший регістр, обрізане чи подовжене слово (Reset, rese, resetx)
+    CONSOLE_ENC_EXTRA_WORD     // третє слово
+} console_enc_result_t;
+
+console_enc_result_t console_parse_enc(const char *line);
+// Пояснення хибної форми команди enc: що саме не так і обидві допустимі форми (spec AC-07).
+const char *console_msg_enc_error(console_enc_result_t r);
 // Пояснення відмови за станом для команди REBOOT або WDT_TEST.
 const char *console_msg_denied(console_cmd_t cmd);
 
