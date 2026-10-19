@@ -19,7 +19,7 @@
         "components/encoders/CMakeLists.txt"
       ],
       "file": "docs/features/phase4-encoders/tasks/t1-encoders-core-accumulate.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T2",
