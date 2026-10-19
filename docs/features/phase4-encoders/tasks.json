@@ -166,6 +166,79 @@
       ],
       "file": "docs/features/phase4-encoders/tasks/t8-acceptance-checklist.md",
       "status": "review"
+    },
+    {
+      "id": "T9",
+      "title": "Швидкість лише за інтервал не коротший за половину номіналу, з усім рухом від попередньої мітки (review F1)",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-02",
+        "AC-04",
+        "AC-10"
+      ],
+      "dod": "хостові тести сплеску наздоганяння й переносу руху зелені; `check_core_headers.sh` чистий; `idf.py build` без нових попереджень",
+      "files_hint": [
+        "components/encoders/encoders_core.c",
+        "components/encoders/include/encoders_core.h",
+        "components/encoders/encoders_hal.c",
+        "test/host/test_encoders.c"
+      ],
+      "file": "docs/features/phase4-encoders/tasks/t9-speed-min-interval.md",
+      "status": "todo"
+    },
+    {
+      "id": "T10",
+      "title": "Причина недоступності — вказівник на статичний рядок замість копії, стан енкодерів < 200 байтів (review F5)",
+      "layer": "domain",
+      "deps": [
+        "T9"
+      ],
+      "acs": [
+        "AC-08"
+      ],
+      "dod": "тести недоступності зелені; `_Static_assert` розміру в HAL; `idf.py build` без нових попереджень",
+      "files_hint": [
+        "components/encoders/encoders_core.c",
+        "components/encoders/include/encoders_core.h",
+        "components/encoders/encoders_hal.c",
+        "test/host/test_encoders.c"
+      ],
+      "file": "docs/features/phase4-encoders/tasks/t10-reason-static-pointer.md",
+      "status": "todo"
+    },
+    {
+      "id": "T11",
+      "title": "Відмова enc називає, що саме не так: невідоме слово, помилка в reset, зайве слово (review F2)",
+      "layer": "ports",
+      "deps": [],
+      "acs": [
+        "AC-07"
+      ],
+      "dod": "три причини — три тексти з обома формами; раннер зелений; `idf.py build` без нових попереджень",
+      "files_hint": [
+        "components/rover_console/console_core.c",
+        "components/rover_console/include/console_core.h",
+        "components/rover_console/console_hal.c",
+        "test/host/test_console.c"
+      ],
+      "file": "docs/features/phase4-encoders/tasks/t11-enc-error-reason.md",
+      "status": "todo"
+    },
+    {
+      "id": "T12",
+      "title": "acceptance.md: крок AC-03 у FAILSAFE і факт часу хостового прогону (review F3, F4)",
+      "layer": "docs",
+      "deps": [],
+      "acs": [
+        "AC-03"
+      ],
+      "dod": "крок FAILSAFE з очікуванням і місцем для запису; рядок про час прогону з посиланням на OQ-2",
+      "files_hint": [
+        "docs/features/phase4-encoders/acceptance.md"
+      ],
+      "file": "docs/features/phase4-encoders/tasks/t12-acceptance-failsafe-runtime.md",
+      "status": "todo"
     }
   ]
 }
