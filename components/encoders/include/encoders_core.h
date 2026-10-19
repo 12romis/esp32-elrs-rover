@@ -28,7 +28,7 @@ typedef struct {
 typedef struct {
     enc_wheel_state_t w[ENC_WHEELS];
     bool primed;         // перша вибірка вже була: є з чим порівнювати
-    uint64_t last_us;    // мітка попередньої вибірки, мкс від старту
+    uint64_t last_us;    // мітка останнього інтервалу вимірювання, мкс від старту (короткі вибірки її не змінюють)
     uint32_t intervals;  // лічильник інтервалів вимірювання від старту
 } enc_state_t;
 
