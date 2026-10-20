@@ -9,8 +9,8 @@ files_hint: ["components/ioexp/ioexp_hal.c", "components/ioexp/include/ioexp_hal
 owner: "Агент"
 estimate: "S"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T9 — Додати в ioexp_hal операцію зміни лінії скидання і внутрішній мʼютекс запису байта

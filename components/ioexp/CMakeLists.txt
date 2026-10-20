@@ -2,4 +2,4 @@
 idf_component_register(SRCS "ioexp_core.c" "ioexp_hal.c"
                        INCLUDE_DIRS "include"
                        REQUIRES board i2c_bus esp_driver_i2c
-                       PRIV_REQUIRES esp_timer log)
+                       PRIV_REQUIRES esp_timer log freertos)

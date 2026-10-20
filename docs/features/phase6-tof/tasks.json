@@ -190,7 +190,7 @@
         "components/ioexp/include/ioexp_hal.h"
       ],
       "file": "docs/features/phase6-tof/tasks/t9-ioexp-hal-xshut-mutex.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T10",

@@ -16,7 +16,7 @@
 | T6 | Перевести в drive_core усі перевірки «лише ARMED» на предикат: відсічка, втрата зв'язку, пульт, роззброєння, вікно команди, регулятор | app | Агент | M | T5 | todo | — |
 | T7 | Навчити ui_core OBSTACLE_HOLD: задні ліхтарі авто, вхід у рух вмикає фари й сигнал, перехід між ARMED і OBSTACLE_HOLD їх не чіпає | app | Агент | S | T3 | done | COMMIT |
 | T8 | Додати в console_core команду tof (показ і reinit), матрицю дозволів і прийом drive в OBSTACLE_HOLD | ports | Агент | M | T3 | done | COMMIT |
-| T9 | Додати в ioexp_hal операцію зміни лінії скидання і внутрішній мʼютекс запису байта | infra | Агент | S | T4 | todo | — |
+| T9 | Додати в ioexp_hal операцію зміни лінії скидання і внутрішній мʼютекс запису байта | infra | Агент | S | T4 | done | COMMIT |
 | T10 | Створити tof_hal: драйвер VL53L0X (порт p4_tof.c), послідовність XSHUT з новими адресами, виняток у check_delays | infra | Агент | M | T1, T9 | todo | — |
 | T11 | Додати в tof_hal задачу sensors: опитування раз на 50 мс, знімок під portMUX, відмова за 250 мс, tof reinit у DISARMED | infra | Агент | M | T10 | todo | — |
 | T12 | Підключити далекоміри до drive_hal: знімок у кроці, запит OBSTACLE_HOLD ↔ ARMED без pid_hal_arm_begin, журнал, предикат у журналі й лічильнику затримки | wiring | Агент | M | T5, T6, T11 | todo | — |

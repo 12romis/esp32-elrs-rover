@@ -6,17 +6,21 @@
 #include "esp_timer.h"
 #include "i2c_bus_core.h"
 #include "i2c_bus_hal.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #define WRITE_TIMEOUT_MS 20     // таймаут запису байта (SAD §4)
 #define PROBE_TIMEOUT_MS 10     // таймаут зонда скану
 #define START_ATTEMPTS 2        // до двох спроб запису нуля
 #define LOCK_TIMEOUT_MS 50
+#define MUTEX_TIMEOUT_MS 50     // чекання внутрішнього мʼютекса байта (ui і sensors пишуть у розширювач, ADR-0002 phase6-tof)
 #define REFRESH_MS 1000         // періодичний перезапис байта: розширювач міг втратити живлення й піднятися з усіма виходами
 #define RESET_EVERY_FAILS 5     // після такої кількості невдач підряд скинути стан шини
 
 static const char *TAG = "ioexp";
 
 static ioexp_t s_e;
+static SemaphoreHandle_t s_mutex;   // один запис байта за раз: ui (світло) і sensors (лінії скидання)
 static i2c_master_dev_handle_t s_dev;
 static uint32_t s_last_ok_ms;
 static int s_fail_streak;
@@ -39,6 +43,9 @@ static bool write_byte(uint8_t value)
 esp_err_t ioexp_start(void)
 {
     ioexp_init(&s_e);
+    if (s_mutex == NULL) {
+        s_mutex = xSemaphoreCreateMutex();
+    }
     esp_err_t err = i2c_bus_init();
     if (err == ESP_OK) {
         i2c_device_config_t dev_cfg = {
@@ -91,11 +98,51 @@ bool ioexp_hal_bit(int bit)
     return ioexp_available(&s_e) && ioexp_bit(&s_e, bit);
 }
 
+static ioexp_wr_t apply_locked(uint8_t desired_light_bits);
+
 ioexp_wr_t ioexp_hal_apply(uint8_t desired_light_bits)
 {
     if (!ioexp_available(&s_e)) {
         return IOEXP_WR_UNAVAILABLE;
     }
+    if (s_mutex == NULL || xSemaphoreTake(s_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return IOEXP_WR_FAILED;   // копія не змінена, автоматика повторить
+    }
+    ioexp_wr_t r = apply_locked(desired_light_bits);
+    xSemaphoreGive(s_mutex);
+    return r;
+}
+
+ioexp_wr_t ioexp_hal_xshut(int bit, bool high)
+{
+    if (!ioexp_available(&s_e)) {
+        return IOEXP_WR_UNAVAILABLE;
+    }
+    if (s_mutex == NULL || xSemaphoreTake(s_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) != pdTRUE) {
+        return IOEXP_WR_FAILED;
+    }
+    ioexp_wr_t r = IOEXP_WR_FAILED;
+    if (ioexp_xshut_set(&s_e, bit, high)) {
+        // світло лишаємо таким, яким воно підтверджене: бажане світло ui застосує сам наступним apply
+        uint8_t byte;
+        if (ioexp_prepare(&s_e, (uint8_t)(s_e.shadow & IOEXP_LIGHT_MASK), &byte)) {
+            bool ack = write_byte(byte);
+            ioexp_commit(&s_e, byte, ack);
+            if (ack) {
+                s_last_ok_ms = now_ms();
+                s_fail_streak = 0;
+                r = IOEXP_WR_OK;
+            } else {
+                ioexp_xshut_revert(&s_e);   // розряд лишається таким, яким підтверджений
+            }
+        }
+    }
+    xSemaphoreGive(s_mutex);
+    return r;
+}
+
+static ioexp_wr_t apply_locked(uint8_t desired_light_bits)
+{
     bool refresh = (uint32_t)(now_ms() - s_last_ok_ms) >= REFRESH_MS;
     if (!ioexp_needs_write(&s_e, desired_light_bits) && !refresh) {
         return IOEXP_WR_OK;
