@@ -5,7 +5,7 @@
 # Список заголовків — CALIB_FILES (інші *_calib.h додаються сюди, коли їхні константи матимуть рядки з ім'ям).
 # Використання: test/host/check_calib.sh [корінь_проєкту]
 ROOT="${1:-$(cd "$(dirname "$0")/../.." && pwd)}"
-CALIB_FILES=("components/encoders/include/encoders_calib.h")
+CALIB_FILES=("components/encoders/include/encoders_calib.h" "components/tof/include/tof_calib.h")
 MEASURED="$ROOT/docs/measured.md"
 bad=0
 

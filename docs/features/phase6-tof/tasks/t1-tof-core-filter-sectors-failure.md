@@ -9,8 +9,8 @@ files_hint: ["components/tof/tof_core.c", "components/tof/include/tof_core.h", "
 owner: "Агент"
 estimate: "M"
 context_budget: "M"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T1 — Створити tof_core: медіана, сектори, зайнятість, звільнення, відмова датчика і калібрувальну константу порогу

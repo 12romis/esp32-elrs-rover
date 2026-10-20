@@ -22,7 +22,7 @@
         "test/host/check_calib.sh"
       ],
       "file": "docs/features/phase6-tof/tasks/t1-tof-core-filter-sectors-failure.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T2",
