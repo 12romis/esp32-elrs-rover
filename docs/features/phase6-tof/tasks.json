@@ -1,0 +1,318 @@
+{
+  "slug": "phase6-tof",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Створити tof_core: медіана, сектори, зайнятість, звільнення, відмова датчика і калібрувальну константу порогу",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-01",
+        "AC-03",
+        "AC-06",
+        "AC-17"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений, серед тестів — усі рядки «Edge cases»; `check_core_headers.sh` чистий для `tof_core.c`; `check_calib.sh` чистий: `TOF_OBSTACLE_MM` 170 збігається з рядком у `docs/measured.md`",
+      "files_hint": [
+        "components/tof/tof_core.c",
+        "components/tof/include/tof_core.h",
+        "components/tof/include/tof_calib.h",
+        "components/tof/CMakeLists.txt",
+        "test/host/test_tof.c",
+        "test/host/check_calib.sh"
+      ],
+      "file": "docs/features/phase6-tof/tasks/t1-tof-core-filter-sectors-failure.md",
+      "status": "todo"
+    },
+    {
+      "id": "T2",
+      "title": "Додати в tof_core обмеження тяги пари бортів і тексти: показ датчиків і рядок входу в утримання",
+      "layer": "domain",
+      "deps": [
+        "T1"
+      ],
+      "acs": [
+        "AC-02",
+        "AC-04",
+        "AC-05",
+        "AC-10",
+        "AC-17"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений, серед тестів — усі рядки «Edge cases»; `check_core_headers.sh` чистий; `idf.py build` без помилок і нових попереджень",
+      "files_hint": [
+        "components/tof/tof_core.c",
+        "components/tof/include/tof_core.h",
+        "test/host/test_tof.c"
+      ],
+      "file": "docs/features/phase6-tof/tasks/t2-tof-core-limit-and-text.md",
+      "status": "todo"
+    },
+    {
+      "id": "T3",
+      "title": "Додати в app_state предикат «ровер їде» і пару OBSTACLE_HOLD → DISARMED (12 пар із 49)",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-13",
+        "AC-17"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений: таблиця має рівно 12 пар із 49; `check_core_headers.sh` чистий; `idf.py build` без помилок і нових попереджень",
+      "files_hint": [
+        "components/app_state/app_state_core.c",
+        "components/app_state/include/app_state.h",
+        "test/host/test_app_state.c",
+        "docs/02-FIRMWARE-CONTEXT.md"
+      ],
+      "file": "docs/features/phase6-tof/tasks/t3-app-state-driving-predicate.md",
+      "status": "todo"
+    },
+    {
+      "id": "T4",
+      "title": "Розширити ioexp_core: біти ліній скидання далекомірів у тіньовому регістрі і збирання байта зі збереженням",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-08",
+        "AC-16",
+        "AC-17"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений, серед тестів — усі рядки «Edge cases»; `check_core_headers.sh` чистий; `idf.py build` без помилок і нових попереджень",
+      "files_hint": [
+        "components/ioexp/ioexp_core.c",
+        "components/ioexp/include/ioexp_core.h",
+        "test/host/test_ioexp.c"
+      ],
+      "file": "docs/features/phase6-tof/tasks/t4-ioexp-core-xshut-bits.md",
+      "status": "todo"
+    },
+    {
+      "id": "T5",
+      "title": "Вбудувати в drive_ctl_step знімок далекомірів: обмеження тяги після мікшера, запити ARMED ↔ OBSTACLE_HOLD, застарілий знімок",
+      "layer": "app",
+      "deps": [
+        "T2",
+        "T3"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-04",
+        "AC-05",
+        "AC-06"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений, серед тестів — усі рядки «Edge cases»; тести фаз 1–5 не зламано; `check_core_headers.sh` чистий; `idf.py build` без помилок і нових попереджень",
+      "files_hint": [
+        "components/drive/drive_core.c",
+        "components/drive/include/drive_core.h",
+        "components/drive/CMakeLists.txt",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase6-tof/tasks/t5-drive-core-limit-and-hold-transitions.md",
+      "status": "todo"
+    },
+    {
+      "id": "T6",
+      "title": "Перевести в drive_core усі перевірки «лише ARMED» на предикат: відсічка, втрата зв'язку, пульт, роззброєння, вікно команди, регулятор",
+      "layer": "app",
+      "deps": [
+        "T5"
+      ],
+      "acs": [
+        "AC-12",
+        "AC-14",
+        "AC-15"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений, серед тестів — паритет усіх причин з потоку 5; `check_core_headers.sh` чистий; `idf.py build` без помилок і нових попереджень",
+      "files_hint": [
+        "components/drive/drive_core.c",
+        "components/drive/include/drive_core.h",
+        "components/pid/pid_core.c",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase6-tof/tasks/t6-drive-core-hold-invariants-parity.md",
+      "status": "todo"
+    },
+    {
+      "id": "T7",
+      "title": "Навчити ui_core OBSTACLE_HOLD: задні ліхтарі авто, вхід у рух вмикає фари й сигнал, перехід між ARMED і OBSTACLE_HOLD їх не чіпає",
+      "layer": "app",
+      "deps": [
+        "T3"
+      ],
+      "acs": [
+        "AC-14",
+        "AC-16"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений, тести фази 2 не зламано; `check_core_headers.sh` чистий; `idf.py build` без помилок і нових попереджень",
+      "files_hint": [
+        "components/ui/ui_core.c",
+        "components/ui/include/ui_core.h",
+        "test/host/test_ui.c"
+      ],
+      "file": "docs/features/phase6-tof/tasks/t7-ui-core-hold-lights-signals.md",
+      "status": "todo"
+    },
+    {
+      "id": "T8",
+      "title": "Додати в console_core команду tof (показ і reinit), матрицю дозволів і прийом drive в OBSTACLE_HOLD",
+      "layer": "ports",
+      "deps": [
+        "T3"
+      ],
+      "acs": [
+        "AC-09",
+        "AC-10",
+        "AC-11",
+        "AC-15"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений, матриця 2×7 і хибні форми перевірені; `check_core_headers.sh` чистий; `idf.py build` без помилок і нових попереджень",
+      "files_hint": [
+        "components/rover_console/console_core.c",
+        "components/rover_console/include/console_core.h",
+        "test/host/test_console.c"
+      ],
+      "file": "docs/features/phase6-tof/tasks/t8-console-tof-command-and-hold-drive.md",
+      "status": "todo"
+    },
+    {
+      "id": "T9",
+      "title": "Додати в ioexp_hal операцію зміни лінії скидання і внутрішній мʼютекс запису байта",
+      "layer": "infra",
+      "deps": [
+        "T4"
+      ],
+      "acs": [
+        "AC-08",
+        "AC-16"
+      ],
+      "dod": "`idf.py build` без помилок і нових попереджень; `check_delays.sh`, `check_pins.sh` чисті; HAL — приймання на залізі T15 (AC-08, AC-16); хостового моку немає (пункт 6 конституції)",
+      "files_hint": [
+        "components/ioexp/ioexp_hal.c",
+        "components/ioexp/include/ioexp_hal.h"
+      ],
+      "file": "docs/features/phase6-tof/tasks/t9-ioexp-hal-xshut-mutex.md",
+      "status": "todo"
+    },
+    {
+      "id": "T10",
+      "title": "Створити tof_hal: драйвер VL53L0X (порт p4_tof.c), послідовність XSHUT з новими адресами, виняток у check_delays",
+      "layer": "infra",
+      "deps": [
+        "T1",
+        "T9"
+      ],
+      "acs": [
+        "AC-07"
+      ],
+      "dod": "`idf.py build` без помилок і нових попереджень; `check_delays.sh`, `check_pins.sh`, `check_core_headers.sh` чисті; HAL — приймання на залізі T15 (AC-07); хостового моку немає (пункт 6 конституції)",
+      "files_hint": [
+        "components/tof/tof_hal.c",
+        "components/tof/include/tof_hal.h",
+        "components/tof/CMakeLists.txt",
+        "test/host/check_delays.sh"
+      ],
+      "file": "docs/features/phase6-tof/tasks/t10-tof-hal-driver-xshut-sequence.md",
+      "status": "todo"
+    },
+    {
+      "id": "T11",
+      "title": "Додати в tof_hal задачу sensors: опитування раз на 50 мс, знімок під portMUX, відмова за 250 мс, tof reinit у DISARMED",
+      "layer": "infra",
+      "deps": [
+        "T10"
+      ],
+      "acs": [
+        "AC-06",
+        "AC-08",
+        "AC-09"
+      ],
+      "dod": "`idf.py build` без помилок і нових попереджень; `check_delays.sh` чистий; HAL — приймання на залізі T15 (AC-06, AC-08, AC-09); хостового моку немає (пункт 6 конституції)",
+      "files_hint": [
+        "components/tof/tof_hal.c",
+        "components/tof/include/tof_hal.h"
+      ],
+      "file": "docs/features/phase6-tof/tasks/t11-tof-hal-sensors-task-snapshot-reinit.md",
+      "status": "todo"
+    },
+    {
+      "id": "T12",
+      "title": "Підключити далекоміри до drive_hal: знімок у кроці, запит OBSTACLE_HOLD ↔ ARMED без pid_hal_arm_begin, журнал, предикат у журналі й лічильнику затримки",
+      "layer": "wiring",
+      "deps": [
+        "T5",
+        "T6",
+        "T11"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-03",
+        "AC-06",
+        "AC-12"
+      ],
+      "dod": "`idf.py build` без помилок і нових попереджень; `test/host/run_tests.sh` зелений; `check_delays.sh`, `check_pins.sh` чисті",
+      "files_hint": [
+        "components/drive/drive_hal.c",
+        "components/drive/CMakeLists.txt"
+      ],
+      "file": "docs/features/phase6-tof/tasks/t12-drive-hal-wire-tof-and-hold.md",
+      "status": "todo"
+    },
+    {
+      "id": "T13",
+      "title": "Підключити в main старт tof і колбеки консолі tof_show та tof_reinit",
+      "layer": "wiring",
+      "deps": [
+        "T8",
+        "T11",
+        "T12"
+      ],
+      "acs": [
+        "AC-07",
+        "AC-10"
+      ],
+      "dod": "`idf.py build` без помилок і нових попереджень; `test/host/run_tests.sh` зелений; `check_pins.sh`, `check_delays.sh` чисті",
+      "files_hint": [
+        "main/main.c",
+        "main/CMakeLists.txt"
+      ],
+      "file": "docs/features/phase6-tof/tasks/t13-wire-main-tof-console.md",
+      "status": "todo"
+    },
+    {
+      "id": "T14",
+      "title": "Посилити хостові перевірки: повний прогін, статичні перевірки core, пінів, затримок і калібрування для фази 6",
+      "layer": "tests",
+      "deps": [
+        "T13"
+      ],
+      "acs": [
+        "AC-17",
+        "AC-18"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений, ≤ 5 с; Усі `check_*.sh` чисті, `selftest_tools.sh` зелений; `idf.py build` без помилок і нових попереджень",
+      "files_hint": [
+        "test/host/run_tests.sh",
+        "test/host/selftest_tools.sh",
+        "test/host/README.md"
+      ],
+      "file": "docs/features/phase6-tof/tasks/t14-host-guardrails-full-run.md",
+      "status": "todo"
+    },
+    {
+      "id": "T15",
+      "title": "Написати acceptance.md: процедура приймання фази 6 на залізі для Розробника і шаблон записів у журнал вимірювань",
+      "layer": "docs",
+      "deps": [
+        "T13"
+      ],
+      "acs": [
+        "AC-19"
+      ],
+      "dod": "`acceptance.md` покриває всі апаратні AC і KPI з §7; Містить місце для запису результатів і дат кожного кроку",
+      "files_hint": [
+        "docs/features/phase6-tof/acceptance.md"
+      ],
+      "file": "docs/features/phase6-tof/tasks/t15-acceptance-checklist.md",
+      "status": "todo"
+    }
+  ]
+}
