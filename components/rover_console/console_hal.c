@@ -56,6 +56,41 @@ static void do_enc(console_cmd_t cmd)
     fflush(stdout);
 }
 
+// Команда регулятора pid (phase5-pid). Перевірки форми й стану вже пройдено в console_parse.
+static void do_pid(console_cmd_t cmd, const char *line)
+{
+    static char text[700];   // показ стану з двома бортами ≈ 400 байтів (UTF-8)
+    if (s_ops->pid_show == NULL) {
+        say("Регулятор не підключений.");
+        return;
+    }
+    console_pid_t p = console_parse_pid(line);
+    size_t n = 0;
+    switch (cmd) {
+    case CONSOLE_CMD_PID_SET:
+        n = s_ops->pid_set_param(p.param, p.value, text, sizeof(text));
+        break;
+    case CONSOLE_CMD_PID_MODE:
+        n = s_ops->pid_set_mode(p.form == CONSOLE_PID_ON, text, sizeof(text));
+        break;
+    case CONSOLE_CMD_PID_SAVE:
+        n = s_ops->pid_save(text, sizeof(text));
+        break;
+    case CONSOLE_CMD_PID_TRACE:
+        s_ops->pid_trace(p.form == CONSOLE_PID_TRACE_ON);
+        n = (size_t)snprintf(text, sizeof(text), "%s", p.form == CONSOLE_PID_TRACE_ON
+                             ? "Трасування регулятора ввімкнено: 10 рядків за секунду, лише в ARMED."
+                             : "Трасування регулятора вимкнено.");
+        break;
+    default:
+        n = s_ops->pid_show(text, sizeof(text));
+        break;
+    }
+    put_lines(text);
+    if (n == 0 || text[n - 1] != '\n') printf("\r\n");
+    fflush(stdout);
+}
+
 static void do_status(void)
 {
     uint64_t up_s = (uint64_t)(esp_timer_get_time() / 1000000);
@@ -189,7 +224,11 @@ static void execute(const char *line)
         break;
     case CONSOLE_CMD_DENIED_STATE: {
         char buf[320];
-        console_fmt_denied(buf, sizeof(buf), console_identify(line), app_state_get(), app_state_failsafe_cause());
+        if (console_identify(line) == CONSOLE_CMD_PID) {
+            console_fmt_pid_denied(buf, sizeof(buf), console_parse_pid(line).form, app_state_get());
+        } else {
+            console_fmt_denied(buf, sizeof(buf), console_identify(line), app_state_get(), app_state_failsafe_cause());
+        }
         say(buf);
         break;
     }
@@ -204,6 +243,11 @@ static void execute(const char *line)
             say(console_msg_beep_error(console_parse_beep(line, &hz, &dur)));
         } else if (named == CONSOLE_CMD_ENC) {
             say(console_msg_enc_error(console_parse_enc(line)));
+        } else if (named == CONSOLE_CMD_PID) {
+            static char perr[700];   // перелік форм ≈ 600 байтів UTF-8
+            console_pid_t p = console_parse_pid(line);
+            console_fmt_pid_error(perr, sizeof(perr), &p);
+            say(perr);
         } else {
             float t, s;
             say(console_msg_drive_error(console_parse_drive(line, &t, &s)));
@@ -222,6 +266,13 @@ static void execute(const char *line)
     case CONSOLE_CMD_ENC:
     case CONSOLE_CMD_ENC_RESET:
         do_enc(cmd);
+        break;
+    case CONSOLE_CMD_PID:
+    case CONSOLE_CMD_PID_SET:
+    case CONSOLE_CMD_PID_MODE:
+    case CONSOLE_CMD_PID_SAVE:
+    case CONSOLE_CMD_PID_TRACE:
+        do_pid(cmd, line);
         break;
     case CONSOLE_CMD_HELP:
         say(console_help_text());

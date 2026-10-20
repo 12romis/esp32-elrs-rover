@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include "app_state.h"
+#include "pid_core.h"
 #include "ui_core.h"
 
 #define CONSOLE_LINE_MAX 64  // максимум символів у рядку команди (без завершального нуля)
@@ -41,7 +42,13 @@ typedef enum {
     CONSOLE_CMD_BEEP,
     CONSOLE_CMD_BAD_ARGS,  // drive, light, beep чи enc із відсутніми, зайвими, нечисловими чи позамежними аргументами
     CONSOLE_CMD_ENC,       // знімок енкодерів (phase4-encoders, contracts/cli.md)
-    CONSOLE_CMD_ENC_RESET  // обнулення лічильників енкодерів
+    CONSOLE_CMD_ENC_RESET, // обнулення лічильників енкодерів
+    // Регулятор швидкості (phase5-pid, spec AC-03, AC-04, AC-05, AC-09, AC-15). Хибна форма — CONSOLE_CMD_BAD_ARGS.
+    CONSOLE_CMD_PID,       // показ стану
+    CONSOLE_CMD_PID_SET,   // зміна одного числа набору
+    CONSOLE_CMD_PID_MODE,  // pid on | pid off
+    CONSOLE_CMD_PID_SAVE,  // збереження набору в памʼять плати
+    CONSOLE_CMD_PID_TRACE  // pid trace on | pid trace off
 } console_cmd_t;
 
 void console_init(console_t *c);
@@ -135,3 +142,41 @@ void console_fmt_ui_denied(char *buf, size_t n, ui_result_t r, app_state_t state
 // Рядок про світло, зумер і індикатор для status (spec AC-13).
 void console_fmt_ui_status(char *buf, size_t n, bool expander_ok, bool head, bool red, bool green, bool rear_auto,
                            bool indicator_red, bool buzzer_on, uint32_t remaining_ms);
+
+// ---------- Команда регулятора pid (phase5-pid; spec AC-03, AC-04, AC-09, AC-15, матриця дозволів) ----------
+
+typedef enum {
+    CONSOLE_PID_SHOW,        // «pid»
+    CONSOLE_PID_SET,         // «pid kp|ki|kd|ramp <число>»
+    CONSOLE_PID_ON,          // «pid on»
+    CONSOLE_PID_OFF,         // «pid off»
+    CONSOLE_PID_SAVE,        // «pid save»
+    CONSOLE_PID_TRACE_ON,    // «pid trace on»
+    CONSOLE_PID_TRACE_OFF,   // «pid trace off»
+    CONSOLE_PID_ERR_WORD,    // невідоме друге слово
+    CONSOLE_PID_ERR_MISSING, // число не вказане (чи trace без on/off)
+    CONSOLE_PID_ERR_EXTRA,   // зайві слова
+    CONSOLE_PID_ERR_NUMBER,  // не число за граматикою [+-]цифри[.цифри] (кома, nan, inf, експонента)
+    CONSOLE_PID_ERR_VALUE,   // число, але недопустиме: відʼємне чи нульовий темп розгону
+    CONSOLE_PID_ERR_LIMIT    // спроба змінити межу потужності (spec AC-09)
+} console_pid_form_t;
+
+typedef struct {
+    console_pid_form_t form;
+    pid_param_t param;   // для CONSOLE_PID_SET і CONSOLE_PID_ERR_VALUE
+    float value;         // для CONSOLE_PID_SET
+    const char *why;     // для CONSOLE_PID_ERR_VALUE — причина з pid_value_check
+} console_pid_t;
+
+// Розбір рядка «pid …». Межу потужності названо словами limit, pwm, max чи межа — окрема відмова.
+console_pid_t console_parse_pid(const char *line);
+
+// Матриця дозволів за станом (spec §5): показ, зміна числа і трасування — у всіх станах; on/off — лише DISARMED;
+// save — у всіх, крім ARMED і OBSTACLE_HOLD. Для хибних форм — true (відмова за формою, не за станом).
+bool console_pid_allowed(console_pid_form_t form, app_state_t state);
+
+// Пояснення хибної форми: що не так, допустимі форми і правила чисел (spec AC-04); межа — окреме пояснення (AC-09).
+void console_fmt_pid_error(char *buf, size_t n, const console_pid_t *p);
+
+// Пояснення відмови за станом для форми pid (spec AC-15).
+void console_fmt_pid_denied(char *buf, size_t n, console_pid_form_t form, app_state_t state);

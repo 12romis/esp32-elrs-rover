@@ -11,6 +11,7 @@
 #include "drive_hal.h"
 #include "encoders_hal.h"
 #include "ioexp_hal.h"
+#include "pid_hal.h"
 #include "esp_log.h"
 #include "storage_hal.h"
 #include "ui_hal.h"
@@ -135,6 +136,11 @@ static const console_ops_t s_console_ops = {
     .enc_snapshot = encoders_snapshot_text,
     .enc_reset = encoders_reset_text,
     .enc_status = encoders_status_text,
+    .pid_show = pid_hal_show,
+    .pid_set_param = pid_hal_set_param,
+    .pid_set_mode = pid_hal_set_mode,
+    .pid_save = pid_hal_save,
+    .pid_trace = pid_hal_trace_enable,
 };
 
 void app_main(void)
@@ -170,6 +176,25 @@ void app_main(void)
     }
     esp_err_t ui = ui_start();  // ui лише читає стан і борти, мотори від неї не залежать
     storage_status_t storage = storage_init();
+    // Регулятор (phase5-pid): набір із памʼяті плати — після сховища; до цього control бачить «не налаштований» і
+    // їде як у фазі 4. Задача трасування не впливає на керування (ADR-0003); її збій лише вимикає трасування.
+    pid_hal_init();
+    {
+        // Режим бортів у журналі старту (spec AC-12): борт без доступного енкодера названо таким, що без регулятора.
+        enc_state_t es;
+        encoders_state_get(&es);
+        bool avail[ENC_WHEELS];
+        for (int i = 0; i < ENC_WHEELS; i++) avail[i] = es.w[i].available;
+        pid_set_t set;
+        bool saving;
+        pid_hal_get(&set, &saving);
+        char sides[200];
+        drive_pid_boards_text(set.mode, avail, sides, sizeof(sides));
+        ESP_LOGI(TAG, "регулятор за бортами: %s", sides);
+    }
+    if (pid_trace_start() != ESP_OK) {
+        ESP_LOGW(TAG, "трасування регулятора недоступне — решта працює");
+    }
 
     if (wdt != ESP_OK || con != ESP_OK || storage == STORAGE_STATUS_UNAVAILABLE) {
         char report[80];

@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "esp_err.h"
+#include "pid_core.h"
 #include "ui_core.h"
 
 typedef enum { CONSOLE_MOTOR_ARM, CONSOLE_MOTOR_DISARM, CONSOLE_MOTOR_DRIVE } console_motor_cmd_t;
@@ -66,6 +67,13 @@ typedef struct {
     size_t (*enc_snapshot)(char *buf, size_t n);
     size_t (*enc_reset)(char *buf, size_t n);
     size_t (*enc_status)(char *buf, size_t n);
+    // Регулятор швидкості (phase5-pid, spec AC-03…AC-08, AC-15). Пишуть відповідь у буфер виклику (рядки розділені \n)
+    // і повертають довжину. NULL — регулятор не підключений.
+    size_t (*pid_show)(char *buf, size_t n);
+    size_t (*pid_set_param)(pid_param_t p, float value, char *buf, size_t n);
+    size_t (*pid_set_mode)(bool on, char *buf, size_t n);
+    size_t (*pid_save)(char *buf, size_t n);
+    void (*pid_trace)(bool on);
 } console_ops_t;
 
 // Встановлює драйвер USB-Serial-JTAG і стартує задачу console (core 0, пріоритет 1).
