@@ -9,8 +9,8 @@ files_hint: ["components/drive/drive_core.c", "components/drive/include/drive_co
 owner: "Агент"
 estimate: "M"
 context_budget: "M"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T6 — Перевести в drive_core усі перевірки «лише ARMED» на предикат: відсічка, втрата зв'язку, пульт, роззброєння, вікно команди, регулятор

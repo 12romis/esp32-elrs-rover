@@ -1682,6 +1682,169 @@ static void test_tof_not_in_other_states(void)
     }
 }
 
+// ───────── phase6-tof T6: інваріанти ARMED діють і в OBSTACLE_HOLD (spec AC-12, AC-14, AC-15; ADR-0004) ─────────
+// Ровер у OBSTACLE_HOLD зі стендовою командою руху назад (передній зайнятий, вікно відкрите).
+static uint32_t in_hold_bench(drive_ctl_t *c, uint32_t t0)
+{
+    drive_ctl_init(c);
+    gt(c, APP_STATE_ARMED, t0, tv(t0, false, false), DRIVE_REQ_DRIVE, -0.3f, 0.0f);
+    drive_ctl_out_t o = gt(c, APP_STATE_OBSTACLE_HOLD, t0 + 20, tv(t0 + 20, true, false), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.left_permille == -300 && o.out.stby == 1 && !o.has_state_request);
+    return t0 + 40;
+}
+
+static void test_hold_voltage_cutoff(void)
+{
+    drive_ctl_t c;
+    uint32_t t = in_hold_bench(&c, 1000);
+    drive_ctl_out_t o;
+    drive_ctl_in_t in = in_for(APP_STATE_OBSTACLE_HOLD, t, snap(5900, t), DRIVE_REQ_NONE, 0, 0);
+    in.tof = tv(t, true, false);
+    drive_ctl_step(&c, &in, &o);
+    check_off(o.out);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_FAILSAFE && o.failsafe_cause == APP_FS_VOLTAGE);
+    CHECK(o.stop == DRIVE_STOP_LOW_VOLTAGE);
+    // знімок напруги застарів → теж відсічка
+    uint32_t t2 = in_hold_bench(&c, 5000);
+    in = in_for(APP_STATE_OBSTACLE_HOLD, t2 + 2000, snap(8000, t2), DRIVE_REQ_NONE, 0, 0);
+    in.tof = tv(t2 + 2000, true, false);
+    drive_ctl_step(&c, &in, &o);
+    check_off(o.out);
+    CHECK(o.state_request == APP_STATE_FAILSAFE && o.stop == DRIVE_STOP_STALE_VOLTAGE);
+}
+
+static void test_hold_link_lost_with_remote(void)
+{
+    drive_ctl_t c;
+    uint32_t t = ready_disarmed(&c, 1000);
+    drive_ctl_out_t o;
+    uint32_t seq = 10;
+    // пульт керує: ARMED → OBSTACLE_HOLD (передній зайнятий), далі кадри зникають
+    for (int i = 0; i < 3; i++, t += 20) {
+        drive_ctl_in_t in = in_for(i == 0 ? APP_STATE_ARMED : APP_STATE_OBSTACLE_HOLD, t, snap(8000, t), DRIVE_REQ_NONE, 0, 0);
+        in.rc = rc_raw(t, seq++, NEUT, 1700, SW_ARM);
+        in.tof = tv(t, i > 0, false);
+        drive_ctl_step(&c, &in, &o);
+    }
+    uint32_t last = t - 20;
+    drive_ctl_in_t in = in_for(APP_STATE_OBSTACLE_HOLD, last + 500, snap(8000, last + 500), DRIVE_REQ_NONE, 0, 0);
+    in.rc = rc_raw(last, seq - 1, NEUT, 1700, SW_ARM);
+    in.tof = tv(last + 500, true, false);
+    drive_ctl_step(&c, &in, &o);
+    CHECK(!o.has_state_request || o.state_request != APP_STATE_FAILSAFE);          // рівно 500 мс — ще не втрата
+    in.now_ms = last + 501;
+    in.battery = snap(8000, last + 501);
+    in.tof = tv(last + 501, true, false);
+    drive_ctl_step(&c, &in, &o);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_FAILSAFE && o.failsafe_cause == APP_FS_LINK_LOST);
+    CHECK(o.stop == DRIVE_STOP_LINK_LOST);
+    check_off(o.out);
+}
+
+static void test_hold_remote_appeared_ends_bench(void)
+{
+    drive_ctl_t c;
+    uint32_t t = in_hold_bench(&c, 1000);
+    drive_ctl_out_t o;
+    drive_ctl_in_t in = in_for(APP_STATE_OBSTACLE_HOLD, t, snap(8000, t), DRIVE_REQ_NONE, 0, 0);
+    in.rc = rc_raw(t, 1, NEUT, NEUT, SW_DIS);                  // перший кадр пульта
+    in.tof = tv(t, true, false);
+    drive_ctl_step(&c, &in, &o);
+    CHECK(o.events & DRIVE_EVT_REMOTE_APPEARED);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_DISARMED && o.stop == DRIVE_STOP_REMOTE_APPEARED);
+    check_off(o.out);
+}
+
+static void test_hold_disarm_paths(void)
+{
+    drive_ctl_t c;
+    uint32_t t = in_hold_bench(&c, 1000);
+    drive_ctl_out_t o = gt(&c, APP_STATE_OBSTACLE_HOLD, t, tv(t, true, false), DRIVE_REQ_DISARM, 0, 0);
+    CHECK(o.accepted && o.stop == DRIVE_STOP_DISARM);
+    check_off(o.out);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_DISARMED);          // за один перехід (пара HOLD → DISARMED)
+    // тумблер пульта в DISARM
+    uint32_t t0 = ready_disarmed(&c, 3000);
+    drive_ctl_in_t in = in_for(APP_STATE_OBSTACLE_HOLD, t0, snap(8000, t0), DRIVE_REQ_NONE, 0, 0);
+    in.rc = rc_raw(t0, 3, NEUT, 1700, SW_DIS);
+    in.tof = tv(t0, true, false);
+    drive_ctl_step(&c, &in, &o);
+    CHECK(o.stop == DRIVE_STOP_SWITCH_DISARM && o.has_state_request && o.state_request == APP_STATE_DISARMED);
+    check_off(o.out);
+    // спливання вікна команди руху (2 с) у OBSTACLE_HOLD
+    t = in_hold_bench(&c, 6000);
+    o = gt(&c, APP_STATE_OBSTACLE_HOLD, 6000 + 2000, tv(6000 + 2000, true, false), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.stop == DRIVE_STOP_WINDOW_EXPIRED && o.state_request == APP_STATE_DISARMED);
+    check_off(o.out);
+    // arm в OBSTACLE_HOLD відхилено: озброєння лише з DISARMED
+    o = gt(&c, APP_STATE_OBSTACLE_HOLD, t, tv(t, true, false), DRIVE_REQ_ARM, 0, 0);
+    CHECK(!o.accepted && o.reason == DRIVE_REASON_NOT_DISARMED);
+}
+
+static void test_hold_regulator_not_recaptured(void)
+{
+    drive_ctl_t c;
+    drive_ctl_init(&c);
+    drive_ctl_out_t o;
+    drive_ctl_in_t in = in_for(APP_STATE_ARMED, 1000, snap(8000, 1000), DRIVE_REQ_NONE, 0, 0);
+    in.pid.mode = PID_MODE_ON;
+    drive_ctl_step(&c, &in, &o);
+    CHECK(c.pid_mode == PID_MODE_ON && c.armed_prev);
+    in = in_for(APP_STATE_OBSTACLE_HOLD, 1020, snap(8000, 1020), DRIVE_REQ_NONE, 0, 0);
+    in.pid.mode = PID_MODE_OFF;                                // режим змінено, поки ровер їде (поза межами контракту, але ловить перезахоплення)
+    in.tof = tv(1020, true, false);
+    drive_ctl_step(&c, &in, &o);
+    CHECK(c.pid_mode == PID_MODE_ON && c.armed_prev);          // перехід ARMED → OBSTACLE_HOLD режим не перезахопив і не скинув
+    in = in_for(APP_STATE_ARMED, 1040, snap(8000, 1040), DRIVE_REQ_NONE, 0, 0);
+    in.pid.mode = PID_MODE_OFF;
+    drive_ctl_step(&c, &in, &o);
+    CHECK(c.pid_mode == PID_MODE_ON && c.armed_prev);          // і назад
+    in = in_for(APP_STATE_DISARMED, 1060, snap(8000, 1060), DRIVE_REQ_NONE, 0, 0);
+    in.pid.mode = PID_MODE_OFF;
+    drive_ctl_step(&c, &in, &o);
+    CHECK(!c.armed_prev);                                      // поза рухом — скинуто
+    in = in_for(APP_STATE_ARMED, 1080, snap(8000, 1080), DRIVE_REQ_NONE, 0, 0);
+    in.pid.mode = PID_MODE_OFF;
+    drive_ctl_step(&c, &in, &o);
+    CHECK(c.pid_mode == PID_MODE_OFF && c.armed_prev);         // нове озброєння фіксує режим заново
+}
+
+static void test_hold_trace_frames(void)
+{
+    drive_ctl_t c;
+    uint32_t t = in_hold_bench(&c, 1000);
+    int frames = 0;
+    for (int i = 0; i < 10; i++, t += 20) {
+        drive_ctl_out_t o = gt(&c, APP_STATE_OBSTACLE_HOLD, t, tv(t, true, false), DRIVE_REQ_DRIVE, -0.3f, 0.0f);
+        if (o.trace_ready) frames++;
+    }
+    CHECK(frames >= 1);                                        // кадри трасування йдуть і в OBSTACLE_HOLD
+    int none = 0;
+    for (int i = 0; i < 10; i++, t += 20) {
+        drive_ctl_out_t o = gt(&c, APP_STATE_DISARMED, t, tv(t, false, false), DRIVE_REQ_NONE, 0, 0);
+        if (o.trace_ready) none++;
+    }
+    CHECK(none == 0);
+}
+
+static void test_hold_parity_all_stops_off(void)
+{
+    // у кожній причині зупинки виходи вимкнено в тому ж кроці, що й запит стану (ADR-0002 фази 1)
+    const drive_req_kind_t kinds[] = {DRIVE_REQ_NONE, DRIVE_REQ_DISARM, DRIVE_REQ_DRIVE};
+    for (size_t k = 0; k < 3; k++) {
+        for (int occ = 0; occ < 2; occ++) {
+            drive_ctl_t c;
+            drive_ctl_init(&c);
+            drive_ctl_out_t o;
+            drive_ctl_in_t in = in_for(APP_STATE_OBSTACLE_HOLD, 1000, snap(5000, 1000), kinds[k], 0.3f, 0.0f);
+            in.tof = tv(1000, occ, false);
+            drive_ctl_step(&c, &in, &o);                       // напруга нижче порога
+            check_off(o.out);
+            CHECK(o.has_state_request && o.state_request == APP_STATE_FAILSAFE);
+        }
+    }
+}
+
 int main(void)
 {
     test_pid_boards_text();
@@ -1743,5 +1906,12 @@ int main(void)
     test_tof_stale_snapshot();
     test_tof_priority_of_stops();
     test_tof_not_in_other_states();
+    test_hold_voltage_cutoff();
+    test_hold_link_lost_with_remote();
+    test_hold_remote_appeared_ends_bench();
+    test_hold_disarm_paths();
+    test_hold_regulator_not_recaptured();
+    test_hold_trace_frames();
+    test_hold_parity_all_stops_off();
     return test_summary();
 }

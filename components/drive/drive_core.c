@@ -284,7 +284,7 @@ static bool enc_stale(const drive_ctl_in_t *in)
 static void side_view(const drive_ctl_t *c, const drive_ctl_in_t *in, int b, bool stale, pid_side_view_t *v)
 {
     memset(v, 0, sizeof *v);
-    pid_mode_t mode = in->state == APP_STATE_ARMED ? c->pid_mode : in->pid.mode;
+    pid_mode_t mode = app_state_is_driving(in->state) ? c->pid_mode : in->pid.mode;
     enc_wheel_t a = SIDE_WHEEL[b][0], d = SIDE_WHEEL[b][1];
     bool ok = in->enc.valid && !stale;
     pid_src_t src = pid_side_speed(ok && in->enc.avail[a], in->enc.rpm[a], ok && in->enc.avail[d], in->enc.rpm[d],
@@ -405,17 +405,18 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
     }
     bool stale = enc_stale(in);
     bool regulated = false;
-    if (in->state == APP_STATE_ARMED && !c->armed_prev) {
+    // ARMED і OBSTACLE_HOLD — один рух (ADR-0004 phase6-tof): перехід між ними режим регулятора не перезахоплює й не скидає.
+    if (driving && !c->armed_prev) {
         c->pid_mode = in->pid.mode;
         pid_reset_sides(c);
         pid_trace_acc_reset(&c->trace);
     }
-    if (in->state != APP_STATE_ARMED) {
+    if (!driving) {
         pid_reset_sides(c);
     }
-    c->armed_prev = in->state == APP_STATE_ARMED;
+    c->armed_prev = driving;
     // Застарілий знімок у ARMED з увімкненим регулятором (spec AC-12b): подія один раз; оновлення — регулятор з нуля.
-    if (in->state == APP_STATE_ARMED && c->pid_mode == PID_MODE_ON) {
+    if (driving && c->pid_mode == PID_MODE_ON) {
         if (stale && !c->enc_stale) {
             c->enc_stale = true;
             o->events |= DRIVE_EVT_ENC_STALE;
@@ -436,9 +437,9 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
 
     bool usable = battery_snapshot_usable(&in->battery, in->now_ms);
 
-    // Відсічка по напрузі в ARMED має перевагу над запитами (AC-14): знімок застарів, невалідний або напруга нижча за поріг.
+    // Відсічка по напрузі під час руху (ARMED, OBSTACLE_HOLD) має перевагу над запитами (AC-14): знімок застарів, невалідний або напруга нижча за поріг.
     bool cutoff = false;
-    if (in->state == APP_STATE_ARMED) {
+    if (driving) {
         if (!usable) {
             cutoff = true;
             o->stop = DRIVE_STOP_STALE_VOLTAGE;
@@ -459,7 +460,7 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
     // Пульт у ARMED (конституція, п. 7): перший кадр закінчує консольне керування (роззброєння), а втрата звʼязку
     // понад 500 мс зупиняє ровер і веде у FAILSAFE. Відсічка по напрузі має перевагу над обома.
     bool stopped = cutoff;
-    if (!cutoff && in->state == APP_STATE_ARMED && c->remote_active) {
+    if (!cutoff && driving && c->remote_active) {
         if (o->events & DRIVE_EVT_REMOTE_APPEARED) {
             clear_window(c);
             o->stop = DRIVE_STOP_REMOTE_APPEARED;
@@ -503,7 +504,7 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
         clear_window(c);
         if (!stopped) {
             o->stop = DRIVE_STOP_DISARM;
-            if (in->state == APP_STATE_ARMED) {
+            if (driving) {   // ARMED і OBSTACLE_HOLD: роззброєння за один перехід (пара HOLD → DISARMED)
                 o->has_state_request = true;
                 o->state_request = APP_STATE_DISARMED;
             }
@@ -656,7 +657,7 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
         pid_reset_sides(c);
         for (int b = 0; b < 2; b++) side_view(c, in, b, stale, &o->pid_view[b]);
     }
-    if (in->state == APP_STATE_ARMED) {
+    if (driving) {
         o->trace_ready = pid_trace_acc_add(&c->trace, o->pid_view, in->now_ms, true, &o->trace);
     }
 }
