@@ -149,7 +149,7 @@
         "test/host/test_ui.c"
       ],
       "file": "docs/features/phase6-tof/tasks/t7-ui-core-hold-lights-signals.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T8",

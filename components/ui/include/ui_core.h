@@ -35,7 +35,7 @@ typedef enum { UI_REAR_MANUAL, UI_REAR_AUTO } ui_rear_mode_t;
 // Дозволи (єдина таблиця; console_core її викликає).
 bool ui_core_state_allows(app_state_t st);                       // light і beep: лише DISARMED і ARMED
 bool ui_core_channel_allows(app_state_t st, ui_channel_t ch);    // + red/green заборонені в ARMED
-ui_rear_mode_t ui_core_rear_mode(app_state_t st);                // ARMED і FAILSAFE — автоматика
+ui_rear_mode_t ui_core_rear_mode(app_state_t st);                // ARMED, OBSTACLE_HOLD і FAILSAFE — автоматика
 
 typedef struct {
     uint32_t now_ms;

@@ -44,6 +44,7 @@ static void test_permissions(void)
     printf("ПОКРИТТЯ пар канал × стан (light): %d з 21\n", pairs);
     CHECK(ui_core_rear_mode(APP_STATE_ARMED) == UI_REAR_AUTO);
     CHECK(ui_core_rear_mode(APP_STATE_FAILSAFE) == UI_REAR_AUTO);
+    CHECK(ui_core_rear_mode(APP_STATE_OBSTACLE_HOLD) == UI_REAR_AUTO);   // phase6-tof ADR-0004
     CHECK(ui_core_rear_mode(APP_STATE_DISARMED) == UI_REAR_MANUAL);
 }
 
@@ -241,13 +242,11 @@ static void test_transition_signals(void)
     ui_core_init(&v, HZ);
     o = tick(&v, 0, APP_STATE_DISARMED, 0, 0, true);
     CHECK(o.buzzer_on);
-    // інші стани сигналу не дають
+    // інші стани сигналу не дають (OBSTACLE_HOLD як вхід у рух із DISARMED — окремо, test_hold_*)
     ui_core_t w;
     ui_core_init(&w, HZ);
     settle(&w, 0, APP_STATE_DISARMED);
-    o = tick(&w, 300, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
-    CHECK(!o.buzzer_on);
-    o = tick(&w, 400, APP_STATE_FAULT, 0, 0, true);
+    o = tick(&w, 300, APP_STATE_FAULT, 0, 0, true);
     CHECK(!o.buzzer_on);
 }
 
@@ -426,6 +425,80 @@ static void test_failsafe_reentry_restarts_timeline(void)
     CHECK(o.buzzer_on);
 }
 
+// ---------- phase6-tof (ADR-0004): OBSTACLE_HOLD — стан руху ----------
+static void test_hold_rear_auto_and_silent_transitions(void)
+{
+    ui_core_t u;
+    ui_core_init(&u, HZ);
+    settle(&u, 0, APP_STATE_DISARMED);
+    ui_out_t o = tick(&u, 200, APP_STATE_ARMED, 0, 0, true);
+    CHECK(o.head && o.buzzer_on);                       // озброєння: фари й сигнал, як у фазі 2
+    o = tick(&u, 400, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    CHECK(o.head);                                      // фари не змінились
+    CHECK(!o.buzzer_on);                                // ARMED → OBSTACLE_HOLD без сигналу
+    CHECK(o.red && o.green);                            // стоїть: жовтий
+    o = tick(&u, 500, APP_STATE_OBSTACLE_HOLD, -300, -300, true);
+    CHECK(!o.red && o.green);                           // назад: лише зелений, як в ARMED
+    o = tick(&u, 600, APP_STATE_ARMED, -300, -300, true);
+    CHECK(o.head && !o.buzzer_on);                      // OBSTACLE_HOLD → ARMED без сигналу й без примусових фар
+    CHECK(!o.red && o.green);
+}
+
+static void test_hold_does_not_force_headlights(void)
+{
+    ui_core_t u;
+    ui_core_init(&u, HZ);
+    settle(&u, 0, APP_STATE_DISARMED);
+    tick(&u, 200, APP_STATE_ARMED, 0, 0, true);
+    CHECK(ui_core_light(&u, UI_CH_HEAD, false, APP_STATE_ARMED, true) == UI_OK);   // Розробник вимкнув фари
+    ui_out_t o = tick(&u, 300, APP_STATE_ARMED, 0, 0, true);
+    CHECK(!o.head);
+    o = tick(&u, 400, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    CHECK(!o.head);
+    o = tick(&u, 500, APP_STATE_ARMED, 0, 0, true);
+    CHECK(!o.head && !o.buzzer_on);                     // повернення в ARMED не вмикає фари знову
+}
+
+static void test_disarmed_to_hold_is_arming(void)
+{
+    // ui опитує раз на 100 мс: озброєння біля вже зайнятого сектору виглядає як DISARMED → OBSTACLE_HOLD
+    ui_core_t u;
+    ui_core_init(&u, HZ);
+    settle(&u, 0, APP_STATE_DISARMED);
+    ui_out_t o = tick(&u, 200, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    CHECK(o.head);
+    CHECK(o.buzzer_on && o.buzzer_hz == HZ);
+    CHECK(o.red && o.green);
+}
+
+static void test_hold_exits(void)
+{
+    ui_core_t u;
+    ui_core_init(&u, HZ);
+    settle(&u, 0, APP_STATE_DISARMED);
+    tick(&u, 200, APP_STATE_ARMED, 0, 0, true);
+    tick(&u, 400, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    ui_out_t o = tick(&u, 600, APP_STATE_DISARMED, 0, 0, true);   // роззброєння з утримання
+    CHECK(!o.head && o.buzzer_on);
+    CHECK(o.red && !o.green);                                      // ручний стан DISARMED: червоний
+    ui_core_t w;
+    ui_core_init(&w, HZ);
+    settle(&w, 0, APP_STATE_DISARMED);
+    tick(&w, 200, APP_STATE_ARMED, 0, 0, true);
+    tick(&w, 400, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    o = tick(&w, 600, APP_STATE_FAILSAFE, 0, 0, true);             // FAILSAFE з утримання
+    CHECK(!o.head && o.buzzer_on);
+    CHECK(o.indicator == UI_IND_RED);
+}
+
+static void test_hold_manual_denied(void)
+{
+    ui_core_t u;
+    ui_core_init(&u, HZ);
+    CHECK(ui_core_light(&u, UI_CH_HEAD, true, APP_STATE_OBSTACLE_HOLD, true) == UI_DENY_STATE);
+    CHECK(ui_core_beep(&u, 1000, 100, 0, APP_STATE_OBSTACLE_HOLD, NULL) == UI_DENY_STATE);
+}
+
 int main(void)
 {
     test_permissions();
@@ -445,5 +518,10 @@ int main(void)
     test_silence_outside_failsafe();
     test_failsafe_exit_to_disarmed();
     test_failsafe_reentry_restarts_timeline();
+    test_hold_rear_auto_and_silent_transitions();
+    test_hold_does_not_force_headlights();
+    test_disarmed_to_hold_is_arming();
+    test_hold_exits();
+    test_hold_manual_denied();
     return test_summary();
 }
