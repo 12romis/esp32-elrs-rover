@@ -9,8 +9,8 @@ files_hint: ["components/drive/drive_core.c", "components/drive/include/drive_co
 owner: "Агент"
 estimate: "M"
 context_budget: "M"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T5 — Вбудувати в drive_ctl_step знімок далекомірів: обмеження тяги після мікшера, запити ARMED ↔ OBSTACLE_HOLD, застарілий знімок

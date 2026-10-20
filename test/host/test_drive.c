@@ -129,16 +129,17 @@ static void test_arm(void)
         in = in_for((app_state_t)st, 1000, snap(8000, 1000), DRIVE_REQ_ARM, 0, 0);
         drive_ctl_step(&c, &in, &o);
         CHECK(!o.accepted && o.reason == DRIVE_REASON_NOT_DISARMED);
-        CHECK(!(o.has_state_request && o.state_request == APP_STATE_ARMED));
+        // у OBSTACLE_HOLD запит ARMED буде лише як звільнення сектору (phase6-tof), а не озброєння
+        if (st != APP_STATE_OBSTACLE_HOLD) CHECK(!(o.has_state_request && o.state_request == APP_STATE_ARMED));
     }
 }
 
 static void test_drive_req(void)
 {
     drive_ctl_t c; drive_ctl_out_t o;
-    // drive не в ARMED (AC-06): відхилено, виходи вимкнені
+    // drive поза рухом (AC-06): відхилено, виходи вимкнені; в ARMED і OBSTACLE_HOLD приймається (phase6-tof AC-15)
     for (int st = 0; st < APP_STATE_COUNT; st++) {
-        if (st == APP_STATE_ARMED) continue;
+        if (st == APP_STATE_ARMED || st == APP_STATE_OBSTACLE_HOLD) continue;
         drive_ctl_init(&c);
         drive_ctl_in_t in = in_for((app_state_t)st, 1000, snap(8000, 1000), DRIVE_REQ_DRIVE, 0.3f, 0.0f);
         drive_ctl_step(&c, &in, &o);
@@ -185,7 +186,7 @@ static void test_disarm_req(void)
         check_off(o.out);
         if (st == APP_STATE_ARMED) {
             CHECK(o.has_state_request && o.state_request == APP_STATE_DISARMED);
-        } else {
+        } else if (st != APP_STATE_OBSTACLE_HOLD) {   // OBSTACLE_HOLD — окремо в test_hold_*
             CHECK(!o.has_state_request);
         }
     }
@@ -209,8 +210,10 @@ static void test_ordering(void)
             drive_ctl_init(&c);
             drive_ctl_in_t in = in_for((app_state_t)st, 1000, snap(8000, 1000), (drive_req_kind_t)k, 0.5f, 0.0f);
             drive_ctl_step(&c, &in, &o);
-            if (o.has_state_request) CHECK(o.out.stby == 0);
-            if (st != APP_STATE_ARMED) check_off(o.out);   // AC-08: поза ARMED виходи вимкнені
+            // ADR-0002 фази 1: запити, що зупиняють мотори (DISARMED, FAILSAFE), — з уже вимкненими виходами;
+            // запити OBSTACLE_HOLD ↔ ARMED виходів не вимикають (phase6-tof ADR-0001)
+            if (o.has_state_request && (o.state_request == APP_STATE_DISARMED || o.state_request == APP_STATE_FAILSAFE)) CHECK(o.out.stby == 0);
+            if (!app_state_is_driving((app_state_t)st)) check_off(o.out);   // AC-08: поза рухом виходи вимкнені
         }
     }
 }
@@ -328,7 +331,7 @@ static void test_all_states_off(void)
     // AC-08/AC-20: поза ARMED виходи вимкнені, навіть якщо раніше було вікно
     drive_ctl_t c; drive_ctl_out_t o;
     for (int st = 0; st < APP_STATE_COUNT; st++) {
-        if (st == APP_STATE_ARMED) continue;
+        if (st == APP_STATE_ARMED || st == APP_STATE_OBSTACLE_HOLD) continue;   // OBSTACLE_HOLD — стан руху (phase6-tof)
         drive_ctl_init(&c);
         go(&c, APP_STATE_ARMED, 1000, snap(8000, 1000), DRIVE_REQ_DRIVE, 0.3f, 0.0f);
         o = go(&c, (app_state_t)st, 1020, snap(8000, 1000), DRIVE_REQ_NONE, 0, 0);
@@ -761,7 +764,7 @@ static void test_stby_only_in_armed_remote(void)
 {
     // Поза ARMED виходи завжди вимкнені, хоч би де був стік і тумблер (конституція, п. 7).
     for (int st = 0; st < APP_STATE_COUNT; st++) {
-        if (st == APP_STATE_ARMED) continue;
+        if (st == APP_STATE_ARMED || st == APP_STATE_OBSTACLE_HOLD) continue;   // OBSTACLE_HOLD — стан руху (phase6-tof)
         drive_ctl_t c; drive_ctl_out_t o;
         uint32_t t = ready_disarmed(&c, 1000);
         o = go_rc(&c, (app_state_t)st, t, snap(8000, t), rc_raw(t, 3, 1792, 1808, SW_ARM), DRIVE_REQ_NONE, 0, 0);
@@ -1037,7 +1040,7 @@ static void test_matrix_140(void)
         for (int i = 0; i < 10; i++) {
             for (int s = 0; s < APP_STATE_COUNT; s++) {
                 app_state_t st = (app_state_t)s;
-                bool dis = st == APP_STATE_DISARMED, arm = st == APP_STATE_ARMED;
+                bool dis = st == APP_STATE_DISARMED, arm = st == APP_STATE_ARMED, hold = st == APP_STATE_OBSTACLE_HOLD;
                 bool want;
                 switch (i) {
                 case 0: case 1: want = true; break;                                  // help, status
@@ -1045,7 +1048,7 @@ static void test_matrix_140(void)
                 case 3: want = dis; break;                                           // wdt-test
                 case 4: want = dis && !remote; break;                                // arm: лише стенд
                 case 5: want = true; break;                                          // disarm: завжди
-                case 6: want = arm && !remote; break;                                // drive: лише стенд
+                case 6: want = (arm || hold) && !remote; break;                          // drive: лише стенд, ARMED і OBSTACLE_HOLD
                 case 7: case 8: want = dis || arm; break;                            // light head, beep
                 default: want = true; break;                                         // enc: усі стани й режими
                 }
@@ -1498,6 +1501,187 @@ static void test_pid_boards_text(void)
     CHECK(strstr(buf, "лівий борт: без регулятора (регулятор вимкнений)") != NULL);
 }
 
+// ───────── phase6-tof T5: обмеження тяги за далекомірами, переходи ARMED ↔ OBSTACLE_HOLD, застарілий знімок ─────────
+#include "tof_calib.h"
+
+// Знімок далекомірів: валідний, мітка t, передній/задній сектор зайняті або ні.
+static tof_view_t tv(uint32_t t, bool front_occ, bool rear_occ)
+{
+    tof_view_t v;
+    memset(&v, 0, sizeof(v));
+    v.valid = true;
+    v.t_ms = t;
+    v.protection = true;
+    v.sector[TOF_SECTOR_FRONT].guarded = true;
+    v.sector[TOF_SECTOR_FRONT].occupied = front_occ;
+    v.sector[TOF_SECTOR_FRONT].mm = front_occ ? 120 : 1000;
+    v.sector[TOF_SECTOR_FRONT].nearest = TOF_FRONT;
+    v.sector[TOF_SECTOR_REAR].guarded = true;
+    v.sector[TOF_SECTOR_REAR].occupied = rear_occ;
+    v.sector[TOF_SECTOR_REAR].mm = rear_occ ? 90 : 1000;
+    v.sector[TOF_SECTOR_REAR].nearest = TOF_REAR;
+    return v;
+}
+
+static drive_ctl_out_t gt(drive_ctl_t *c, app_state_t st, uint32_t now, tof_view_t v, drive_req_kind_t k, float thr, float steer)
+{
+    drive_ctl_out_t o;
+    drive_ctl_in_t in = in_for(st, now, snap(8000, now), k, thr, steer);
+    in.tof = v;
+    drive_ctl_step(c, &in, &o);
+    return o;
+}
+
+static void test_tof_front_blocks_forward_and_requests_hold(void)
+{
+    drive_ctl_t c;
+    drive_ctl_init(&c);
+    drive_ctl_out_t o = gt(&c, APP_STATE_ARMED, 1000, tv(1000, false, false), DRIVE_REQ_DRIVE, 0.5f, 0.0f);
+    CHECK(o.accepted && o.out.stby == 1 && o.left_permille == 500);       // вільно: їде
+    CHECK(!o.has_state_request);
+    o = gt(&c, APP_STATE_ARMED, 1020, tv(1020, true, false), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.out.stby == 1);                                                // STBY піднятий (рух назад лишається можливим)
+    CHECK(o.left_permille == 0 && o.right_permille == 0);                  // тяга вперед обнулена в тому ж такті
+    CHECK(o.out.left.duty_permille == 0 && o.out.right.duty_permille == 0);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_OBSTACLE_HOLD);
+    CHECK((o.events & DRIVE_EVT_HOLD_ENTER) && o.hold_sector == TOF_SECTOR_FRONT && o.hold_mm == 120 && o.hold_nearest == TOF_FRONT);
+    CHECK(o.remaining_ms > 0);                                             // вікно команди руху ще відкрите
+}
+
+static void test_tof_turn_in_place_and_reverse_in_hold(void)
+{
+    drive_ctl_t c;
+    drive_ctl_init(&c);
+    drive_ctl_out_t o = gt(&c, APP_STATE_ARMED, 1000, tv(1000, true, false), DRIVE_REQ_DRIVE, 0.5f, 0.4f);
+    CHECK(o.accepted);
+    CHECK(o.left_permille == 400 && o.right_permille == -400);             // тяга нуль, поворот лишився: розворот на місці
+    // в OBSTACLE_HOLD: стік назад (стендова команда), задній вільний → їде назад
+    o = gt(&c, APP_STATE_OBSTACLE_HOLD, 1020, tv(1020, true, false), DRIVE_REQ_DRIVE, -0.5f, 0.0f);
+    CHECK(o.accepted && o.reason == DRIVE_REASON_NONE);
+    CHECK(o.left_permille == -500 && o.right_permille == -500 && o.out.stby == 1);
+    CHECK(!o.has_state_request);                                           // передній ще зайнятий: лишаємось
+    // вперед в OBSTACLE_HOLD — нуль
+    o = gt(&c, APP_STATE_OBSTACLE_HOLD, 1040, tv(1040, true, false), DRIVE_REQ_DRIVE, 0.5f, 0.0f);
+    CHECK(o.accepted && o.left_permille == 0 && o.right_permille == 0 && o.out.stby == 1);
+}
+
+static void test_tof_release_requests_armed(void)
+{
+    drive_ctl_t c;
+    drive_ctl_init(&c);
+    gt(&c, APP_STATE_OBSTACLE_HOLD, 1000, tv(1000, true, false), DRIVE_REQ_DRIVE, -0.3f, 0.0f);
+    drive_ctl_out_t o = gt(&c, APP_STATE_OBSTACLE_HOLD, 1020, tv(1020, false, false), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_ARMED);
+    CHECK((o.events & DRIVE_EVT_HOLD_EXIT));
+    CHECK(o.left_permille == -300 && o.out.stby == 1);                     // рух назад не перервано
+}
+
+static void test_tof_rear_blocks_reverse_only(void)
+{
+    drive_ctl_t c;
+    drive_ctl_init(&c);
+    drive_ctl_out_t o = gt(&c, APP_STATE_ARMED, 1000, tv(1000, false, true), DRIVE_REQ_DRIVE, -0.5f, 0.0f);
+    CHECK(o.left_permille == 0 && o.right_permille == 0 && o.out.stby == 1);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_OBSTACLE_HOLD);
+    CHECK(o.hold_sector == TOF_SECTOR_REAR && o.hold_mm == 90 && o.hold_nearest == TOF_REAR);
+    drive_ctl_init(&c);
+    o = gt(&c, APP_STATE_OBSTACLE_HOLD, 2000, tv(2000, false, true), DRIVE_REQ_DRIVE, 0.5f, 0.0f);
+    CHECK(o.left_permille == 500 && o.right_permille == 500);              // уперед дозволено
+    // обидва зайняті: лише поворот на місці
+    drive_ctl_init(&c);
+    o = gt(&c, APP_STATE_OBSTACLE_HOLD, 3000, tv(3000, true, true), DRIVE_REQ_DRIVE, 0.5f, 0.3f);
+    CHECK(o.left_permille == 300 && o.right_permille == -300);
+    CHECK(!o.has_state_request);
+}
+
+static void test_tof_pult_path_and_power_limit(void)
+{
+    // пульт: стік уперед на повну, передній сектор зайнятий → нуль; потужність ніколи понад 750
+    drive_ctl_t c;
+    drive_ctl_init(&c);
+    uint32_t t0 = ready_disarmed(&c, 1000);
+    uint32_t seq = 10;
+    drive_ctl_out_t o;
+    for (uint32_t t = t0; t < t0 + 100; t += 20) {
+        drive_ctl_in_t in = in_for(APP_STATE_ARMED, t, snap(8000, t), DRIVE_REQ_NONE, 0, 0);
+        in.rc = rc_raw(t, seq++, NEUT, 1792, SW_ARM);
+        in.tof = tv(t, t >= t0 + 60, false);
+        drive_ctl_step(&c, &in, &o);
+        CHECK(o.out.left.duty_permille <= 750 && o.out.right.duty_permille <= 750);
+        if (t < t0 + 60) {
+            CHECK(o.left_permille > 0 && o.right_permille > 0);
+        } else {
+            CHECK(o.left_permille == 0 && o.right_permille == 0 && o.out.stby == 1);
+            CHECK(o.has_state_request && o.state_request == APP_STATE_OBSTACLE_HOLD);
+        }
+    }
+}
+
+static void test_tof_stale_snapshot(void)
+{
+    drive_ctl_t c;
+    drive_ctl_init(&c);
+    gt(&c, APP_STATE_ARMED, 1000, tv(1000, false, false), DRIVE_REQ_DRIVE, 0.5f, 0.0f);
+    // знімок старший за TOF_STALE_MS (250): сектори не охороняються, подія один раз, ровер їде
+    drive_ctl_out_t o = gt(&c, APP_STATE_ARMED, 1260, tv(1000, true, true), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.events & DRIVE_EVT_TOF_STALE);
+    CHECK(o.left_permille == 500 && !o.has_state_request);                 // навіть «зайнятий» у старому знімку ігнорується
+    o = gt(&c, APP_STATE_ARMED, 1280, tv(1000, true, true), DRIVE_REQ_NONE, 0, 0);
+    CHECK(!(o.events & DRIVE_EVT_TOF_STALE));                              // повторно не повідомляє
+    // рівно 250 мс — ще свіжий
+    drive_ctl_init(&c);
+    gt(&c, APP_STATE_ARMED, 3000, tv(3000, false, false), DRIVE_REQ_DRIVE, 0.5f, 0.0f);
+    o = gt(&c, APP_STATE_ARMED, 3250, tv(3000, true, false), DRIVE_REQ_NONE, 0, 0);
+    CHECK(!(o.events & DRIVE_EVT_TOF_STALE));
+    CHECK(o.has_state_request && o.state_request == APP_STATE_OBSTACLE_HOLD);
+    // відновлення
+    drive_ctl_init(&c);
+    gt(&c, APP_STATE_ARMED, 5000, tv(1000, false, false), DRIVE_REQ_DRIVE, 0.5f, 0.0f);
+    o = gt(&c, APP_STATE_ARMED, 5020, tv(5020, false, false), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.events & DRIVE_EVT_TOF_RESTORED);
+    // знімок не отримано зовсім (valid == false): те саме, що застарілий
+    drive_ctl_init(&c);
+    drive_ctl_in_t in = in_for(APP_STATE_ARMED, 7000, snap(8000, 7000), DRIVE_REQ_NONE, 0, 0);
+    drive_ctl_step(&c, &in, &o);
+    CHECK(o.events & DRIVE_EVT_TOF_STALE);
+    // у OBSTACLE_HOLD застарілий знімок = сектори вільні → запит ARMED
+    drive_ctl_init(&c);
+    o = gt(&c, APP_STATE_OBSTACLE_HOLD, 9000, tv(1000, true, false), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_ARMED);
+}
+
+static void test_tof_priority_of_stops(void)
+{
+    drive_ctl_t c;
+    drive_ctl_init(&c);
+    // напруга нижче порога має перевагу над запитом OBSTACLE_HOLD
+    drive_ctl_out_t o;
+    drive_ctl_in_t in = in_for(APP_STATE_ARMED, 1000, snap(5000, 1000), DRIVE_REQ_NONE, 0, 0);
+    in.tof = tv(1000, true, false);
+    drive_ctl_step(&c, &in, &o);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_FAILSAFE && o.failsafe_cause == APP_FS_VOLTAGE);
+    check_off(o.out);
+    // спливання вікна команди руху (2 с) — DISARMED, а не OBSTACLE_HOLD
+    drive_ctl_init(&c);
+    gt(&c, APP_STATE_ARMED, 1000, tv(1000, false, false), DRIVE_REQ_DRIVE, 0.5f, 0.0f);
+    o = gt(&c, APP_STATE_ARMED, 3000, tv(3000, true, false), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_DISARMED && o.stop == DRIVE_STOP_WINDOW_EXPIRED);
+    check_off(o.out);
+}
+
+static void test_tof_not_in_other_states(void)
+{
+    // поза ARMED і OBSTACLE_HOLD зайнятий сектор станів не міняє
+    const app_state_t st[] = {APP_STATE_BOOT, APP_STATE_SELFTEST, APP_STATE_DISARMED, APP_STATE_FAILSAFE, APP_STATE_FAULT};
+    for (size_t i = 0; i < sizeof(st) / sizeof(st[0]); i++) {
+        drive_ctl_t c;
+        drive_ctl_init(&c);
+        drive_ctl_out_t o = gt(&c, st[i], 1000, tv(1000, true, true), DRIVE_REQ_NONE, 0, 0);
+        CHECK(!(o.has_state_request && o.state_request == APP_STATE_OBSTACLE_HOLD));
+        check_off(o.out);
+    }
+}
+
 int main(void)
 {
     test_pid_boards_text();
@@ -1551,5 +1735,13 @@ int main(void)
     test_failsafe_voltage_never_exits();
     test_failsafe_exit_texts();
     test_matrix_140();
+    test_tof_front_blocks_forward_and_requests_hold();
+    test_tof_turn_in_place_and_reverse_in_hold();
+    test_tof_release_requests_armed();
+    test_tof_rear_blocks_reverse_only();
+    test_tof_pult_path_and_power_limit();
+    test_tof_stale_snapshot();
+    test_tof_priority_of_stops();
+    test_tof_not_in_other_states();
     return test_summary();
 }

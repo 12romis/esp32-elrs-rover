@@ -107,7 +107,7 @@
         "test/host/test_drive.c"
       ],
       "file": "docs/features/phase6-tof/tasks/t5-drive-core-limit-and-hold-transitions.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T6",

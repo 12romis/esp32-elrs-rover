@@ -333,7 +333,9 @@ size_t drive_pid_boards_text(pid_mode_t mode, const bool avail[ENC_WHEELS], char
 static void regulate(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o, float l, float r, float dt_s,
                      bool fresh, float dt_enc_s, bool stale)
 {
-    const float mix[2] = {l, r};
+    float lim[2];
+    tof_limit_sides(l, r, c->occ_front, c->occ_rear, &lim[0], &lim[1]);   // зайнятий сектор: тяга в його бік нуль, поворот лишається
+    const float mix[2] = {lim[0], lim[1]};
     const float limit = (float)DRIVE_PWM_MAX_PERMILLE / 1000.0f;
     float out[2];
     for (int b = 0; b < 2; b++) {
@@ -377,6 +379,23 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
     uint32_t dt_ms = c->last_ms != 0 ? (uint32_t)(in->now_ms - c->last_ms) : 20u;
     c->last_ms = in->now_ms;
     float dt_s = (float)dt_ms / 1000.0f;
+    // Далекоміри (phase6-tof, ADR-0001): знімок свіжий, якщо не старший за TOF_STALE_MS; застарілий чи відсутній — сектори
+    // не охороняються й не зайняті, подія один раз (spec AC-06, AC-07).
+    bool driving = app_state_is_driving(in->state);
+    bool tof_ok = in->tof.valid && (uint32_t)(in->now_ms - in->tof.t_ms) <= TOF_STALE_MS;
+    c->occ_front = tof_ok && in->tof.sector[TOF_SECTOR_FRONT].occupied;
+    c->occ_rear = tof_ok && in->tof.sector[TOF_SECTOR_REAR].occupied;
+    if (driving) {
+        if (!tof_ok && !c->tof_stale) {
+            c->tof_stale = true;
+            o->events |= DRIVE_EVT_TOF_STALE;
+        } else if (tof_ok && c->tof_stale) {
+            c->tof_stale = false;
+            o->events |= DRIVE_EVT_TOF_RESTORED;
+        }
+    } else {
+        c->tof_stale = false;
+    }
     bool fresh = in->enc.valid && (!c->enc_seen || in->enc.intervals != c->enc_intervals);
     float dt_enc_s = c->enc_seen && in->enc.t_us > c->enc_t_us ? (float)(in->enc.t_us - c->enc_t_us) / 1e6f : 0.02f;
     if (in->enc.valid) {
@@ -411,8 +430,8 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
 
     update_link(c, in, o);
 
-    if (in->state != APP_STATE_ARMED) {
-        clear_window(c);  // поза ARMED виходи завжди вимкнені (AC-08)
+    if (!driving) {
+        clear_window(c);  // поза рухом (ARMED, OBSTACLE_HOLD) виходи завжди вимкнені (AC-08)
     }
 
     bool usable = battery_snapshot_usable(&in->battery, in->now_ms);
@@ -491,7 +510,7 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
         }
         break;
     case DRIVE_REQ_DRIVE:
-        if (in->state != APP_STATE_ARMED) {
+        if (!driving) {
             o->reason = DRIVE_REASON_NOT_ARMED;
         } else if (c->remote_active) {
             o->reason = DRIVE_REASON_REMOTE_ONLY;   // рух після появи пульта лише стіком (AC-15)
@@ -557,7 +576,7 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
                 o->events |= DRIVE_EVT_ARM_REFUSED;
                 o->arm_block = blk;
             }
-        } else if (in->state == APP_STATE_ARMED && !o->has_state_request && !stopped) {
+        } else if (driving && !o->has_state_request && !stopped) {
             if (it.sw == CRSF_SW_DISARM) {
                 clear_window(c);
                 o->stop = DRIVE_STOP_SWITCH_DISARM;
@@ -592,6 +611,25 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
         c->right_permille = o->right_permille;
         o->remaining_ms = DRIVE_WINDOW_MS - (uint32_t)(in->now_ms - c->accepted_ms);
         o->min_mv = c->min_mv;
+    }
+
+    // Утримання перед перешкодою (phase6-tof, ADR-0001): зайнятий сектор під час руху → OBSTACLE_HOLD, обидва вільні → назад в
+    // ARMED. Відсічка, втрата звʼязку, пульт і роззброєння, що вже поставили запит, мають перевагу. Запити HOLD виходів
+    // не вимикають: рух у вільний бік триває.
+    if (!o->has_state_request) {
+        if (in->state == APP_STATE_ARMED && (c->occ_front || c->occ_rear)) {
+            const tof_view_sector_t *s = &in->tof.sector[c->occ_front ? TOF_SECTOR_FRONT : TOF_SECTOR_REAR];
+            o->has_state_request = true;
+            o->state_request = APP_STATE_OBSTACLE_HOLD;
+            o->events |= DRIVE_EVT_HOLD_ENTER;
+            o->hold_sector = c->occ_front ? TOF_SECTOR_FRONT : TOF_SECTOR_REAR;
+            o->hold_mm = s->mm;
+            o->hold_nearest = s->nearest;
+        } else if (in->state == APP_STATE_OBSTACLE_HOLD && !c->occ_front && !c->occ_rear) {
+            o->has_state_request = true;
+            o->state_request = APP_STATE_ARMED;
+            o->events |= DRIVE_EVT_HOLD_EXIT;
+        }
     }
 
     // Без Task WDT (review F1): моторів не вмикаємо ні з пульта, ні з консолі. Запити зупинки (DISARMED, FAILSAFE)
@@ -630,7 +668,7 @@ void drive_reason_text(drive_reason_t r, uint32_t mv, char *buf, size_t n)
         snprintf(buf, n, "команда arm дозволена лише в стані DISARMED");
         break;
     case DRIVE_REASON_NOT_ARMED:
-        snprintf(buf, n, "команда drive дозволена лише в стані ARMED");
+        snprintf(buf, n, "команда drive дозволена лише в станах ARMED і OBSTACLE_HOLD");
         break;
     case DRIVE_REASON_LOW_VOLTAGE:
         snprintf(buf, n, "напруга %u мВ нижча за поріг %u мВ", (unsigned)mv, (unsigned)BATTERY_CUTOFF_MV);
