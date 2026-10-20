@@ -187,7 +187,7 @@ static void test_matrix_49(void)
         CHECK(console_parse("status", a) == CONSOLE_CMD_STATUS);
         CHECK(console_parse("disarm", a) == CONSOLE_CMD_DISARM);                   // дозволена в усіх станах
         CHECK(console_parse("arm", a) == (st == APP_STATE_DISARMED ? CONSOLE_CMD_ARM : CONSOLE_CMD_DENIED_STATE));
-        CHECK(console_parse("drive 0.3 0", a) == (st == APP_STATE_ARMED ? CONSOLE_CMD_DRIVE : CONSOLE_CMD_DENIED_STATE));
+        CHECK(console_parse("drive 0.3 0", a) == ((st == APP_STATE_ARMED || st == APP_STATE_OBSTACLE_HOLD) ? CONSOLE_CMD_DRIVE : CONSOLE_CMD_DENIED_STATE));
         CHECK(console_parse("reboot", a) == ((st == APP_STATE_DISARMED || st == APP_STATE_BOOT) ? CONSOLE_CMD_REBOOT : CONSOLE_CMD_DENIED_STATE));
         CHECK(console_parse("wdt-test", a) == (st == APP_STATE_DISARMED ? CONSOLE_CMD_WDT_TEST : CONSOLE_CMD_DENIED_STATE));
     }
@@ -332,7 +332,7 @@ static void test_matrix_63(void)
         CHECK(console_parse("status", a) == CONSOLE_CMD_STATUS);
         CHECK(console_parse("disarm", a) == CONSOLE_CMD_DISARM);
         CHECK(console_parse("arm", a) == (st == APP_STATE_DISARMED ? CONSOLE_CMD_ARM : CONSOLE_CMD_DENIED_STATE));
-        CHECK(console_parse("drive 0.3 0", a) == (st == APP_STATE_ARMED ? CONSOLE_CMD_DRIVE : CONSOLE_CMD_DENIED_STATE));
+        CHECK(console_parse("drive 0.3 0", a) == ((st == APP_STATE_ARMED || st == APP_STATE_OBSTACLE_HOLD) ? CONSOLE_CMD_DRIVE : CONSOLE_CMD_DENIED_STATE));
         CHECK(console_parse("reboot", a) == ((st == APP_STATE_DISARMED || st == APP_STATE_BOOT) ? CONSOLE_CMD_REBOOT : CONSOLE_CMD_DENIED_STATE));
         CHECK(console_parse("wdt-test", a) == (st == APP_STATE_DISARMED ? CONSOLE_CMD_WDT_TEST : CONSOLE_CMD_DENIED_STATE));
         CHECK(console_parse("light head on", a) == (ui_ok ? CONSOLE_CMD_LIGHT : CONSOLE_CMD_DENIED_STATE));
@@ -642,6 +642,66 @@ static void test_pid_matrix(void)
     CHECK(strstr(console_help_text(), "pid") != NULL);
 }
 
+// ───────── phase6-tof T8: команда tof (spec AC-09, AC-10, AC-11, AC-15; матриця дозволів) ─────────
+static void test_tof_matrix(void)
+{
+    int pairs = 0;
+    for (int st = 0; st < APP_STATE_COUNT; st++) {
+        app_state_t a = (app_state_t)st;
+        bool disarmed = st == APP_STATE_DISARMED;
+        CHECK(console_parse("tof", a) == CONSOLE_CMD_TOF);                                           // показ — усі стани
+        CHECK(console_parse("tof reinit", a) == (disarmed ? CONSOLE_CMD_TOF_REINIT : CONSOLE_CMD_DENIED_STATE));
+        CHECK(console_tof_allowed(CONSOLE_TOF_SHOW, a));
+        CHECK(console_tof_allowed(CONSOLE_TOF_REINIT, a) == disarmed);
+        CHECK(console_identify("tof") == CONSOLE_CMD_TOF);
+        CHECK(console_identify("tof reinit") == CONSOLE_CMD_TOF);
+        pairs += 2;
+    }
+    CHECK(pairs == 14);
+    printf("ПОКРИТТЯ пар форма tof × стан: %d з 14\n", pairs);
+}
+
+static void test_tof_bad_forms(void)
+{
+    const char *bad[] = {"tof 150", "tof thr 150", "tof threshold 150", "tof 1,5", "tof -5", "tof reinit now", "tof reinit 1",
+                         "tof show", "tof Reinit", "tof rein", "tof reinitx", "tof reinit reinit", "tof limit 100", "tof поріг 150"};
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+        for (int st = 0; st < APP_STATE_COUNT; st++) {     // хибна форма відмовляє у будь-якому стані, раніше за стан
+            CHECK(console_parse(bad[i], (app_state_t)st) == CONSOLE_CMD_BAD_ARGS);
+        }
+    }
+    CHECK(console_parse_tof("tof  reinit").form == CONSOLE_TOF_REINIT);   // зайві пробіли між словами
+    CHECK(console_parse_tof("  tof").form == CONSOLE_TOF_SHOW);
+    CHECK(console_parse_tof("tof 150").form == CONSOLE_TOF_ERR_THRESHOLD);
+    CHECK(console_parse_tof("tof thr 150").form == CONSOLE_TOF_ERR_THRESHOLD);
+    CHECK(console_parse_tof("tof 1,5").form == CONSOLE_TOF_ERR_THRESHOLD);
+    CHECK(console_parse_tof("tof reinit now").form == CONSOLE_TOF_ERR_EXTRA);
+    CHECK(console_parse_tof("tof show").form == CONSOLE_TOF_ERR_WORD);
+    CHECK(console_parse_tof("tof Reinit").form == CONSOLE_TOF_ERR_WORD);
+    char buf[500];
+    console_tof_t p = console_parse_tof("tof 150");
+    console_fmt_tof_error(buf, sizeof buf, &p);
+    CHECK(strstr(buf, "поріг") != NULL && strstr(buf, "не змінюється") != NULL);
+    CHECK(strstr(buf, "tof reinit") != NULL);                  // перелік допустимих форм
+    p = console_parse_tof("tof show");
+    console_fmt_tof_error(buf, sizeof buf, &p);
+    CHECK(strstr(buf, "tof") != NULL && strstr(buf, "reinit") != NULL);
+    console_fmt_tof_denied(buf, sizeof buf, APP_STATE_ARMED);
+    CHECK(strstr(buf, "DISARMED") != NULL && strstr(buf, "ARMED") != NULL && strstr(buf, "скидання") != NULL);
+    console_fmt_tof_denied(buf, sizeof buf, APP_STATE_OBSTACLE_HOLD);
+    CHECK(strstr(buf, "OBSTACLE_HOLD") != NULL);
+}
+
+static void test_tof_in_help_and_drive_hold(void)
+{
+    CHECK(strstr(console_help_text(), "tof") != NULL);
+    CHECK(strstr(console_help_text(), "OBSTACLE_HOLD") != NULL);          // drive дозволений і там
+    CHECK(console_parse("drive 0 -0.4", APP_STATE_OBSTACLE_HOLD) == CONSOLE_CMD_DRIVE);
+    CHECK(console_parse("drive 0 -0.4", APP_STATE_DISARMED) == CONSOLE_CMD_DENIED_STATE);
+    CHECK(console_parse("drive 0 -0.4", APP_STATE_FAILSAFE) == CONSOLE_CMD_DENIED_STATE);
+    CHECK(console_parse("drive 2 0", APP_STATE_OBSTACLE_HOLD) == CONSOLE_CMD_BAD_ARGS);   // хибні аргументи, як і раніше
+}
+
 int main(void)
 {
     test_enc_command();
@@ -670,6 +730,9 @@ int main(void)
     test_pid_forms();
     test_pid_errors();
     test_pid_matrix();
+    test_tof_matrix();
+    test_tof_bad_forms();
+    test_tof_in_help_and_drive_hold();
     test_light_grammar();
     test_beep_grammar();
     test_ui_messages();

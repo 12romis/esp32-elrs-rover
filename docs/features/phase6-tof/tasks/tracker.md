@@ -15,7 +15,7 @@
 | T5 | Вбудувати в drive_ctl_step знімок далекомірів: обмеження тяги після мікшера, запити ARMED ↔ OBSTACLE_HOLD, застарілий знімок | app | Агент | M | T2, T3 | todo | — |
 | T6 | Перевести в drive_core усі перевірки «лише ARMED» на предикат: відсічка, втрата зв'язку, пульт, роззброєння, вікно команди, регулятор | app | Агент | M | T5 | todo | — |
 | T7 | Навчити ui_core OBSTACLE_HOLD: задні ліхтарі авто, вхід у рух вмикає фари й сигнал, перехід між ARMED і OBSTACLE_HOLD їх не чіпає | app | Агент | S | T3 | done | COMMIT |
-| T8 | Додати в console_core команду tof (показ і reinit), матрицю дозволів і прийом drive в OBSTACLE_HOLD | ports | Агент | M | T3 | todo | — |
+| T8 | Додати в console_core команду tof (показ і reinit), матрицю дозволів і прийом drive в OBSTACLE_HOLD | ports | Агент | M | T3 | done | COMMIT |
 | T9 | Додати в ioexp_hal операцію зміни лінії скидання і внутрішній мʼютекс запису байта | infra | Агент | S | T4 | todo | — |
 | T10 | Створити tof_hal: драйвер VL53L0X (порт p4_tof.c), послідовність XSHUT з новими адресами, виняток у check_delays | infra | Агент | M | T1, T9 | todo | — |
 | T11 | Додати в tof_hal задачу sensors: опитування раз на 50 мс, знімок під portMUX, відмова за 250 мс, tof reinit у DISARMED | infra | Агент | M | T10 | todo | — |

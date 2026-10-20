@@ -79,13 +79,28 @@ static void do_pid(console_cmd_t cmd, const char *line)
     case CONSOLE_CMD_PID_TRACE:
         s_ops->pid_trace(p.form == CONSOLE_PID_TRACE_ON);
         n = (size_t)snprintf(text, sizeof(text), "%s", p.form == CONSOLE_PID_TRACE_ON
-                             ? "Трасування регулятора ввімкнено: 10 рядків за секунду, лише в ARMED."
+                             ? "Трасування регулятора ввімкнено: 10 рядків за секунду в ARMED і OBSTACLE_HOLD."
                              : "Трасування регулятора вимкнено.");
         break;
     default:
         n = s_ops->pid_show(text, sizeof(text));
         break;
     }
+    put_lines(text);
+    if (n == 0 || text[n - 1] != '\n') printf("\r\n");
+    fflush(stdout);
+}
+
+// Команда далекомірів tof (phase6-tof). Перевірки форми й стану вже пройдено в console_parse.
+static void do_tof(console_cmd_t cmd)
+{
+    static char text[700];   // показ чотирьох датчиків і двох секторів ≈ 600 байтів (UTF-8)
+    size_t (*op)(char *, size_t) = cmd == CONSOLE_CMD_TOF_REINIT ? s_ops->tof_reinit : s_ops->tof_show;
+    if (op == NULL) {
+        say("Далекоміри не підключені.");
+        return;
+    }
+    size_t n = op(text, sizeof(text));
     put_lines(text);
     if (n == 0 || text[n - 1] != '\n') printf("\r\n");
     fflush(stdout);
@@ -226,6 +241,8 @@ static void execute(const char *line)
         char buf[320];
         if (console_identify(line) == CONSOLE_CMD_PID) {
             console_fmt_pid_denied(buf, sizeof(buf), console_parse_pid(line).form, app_state_get());
+        } else if (console_identify(line) == CONSOLE_CMD_TOF) {
+            console_fmt_tof_denied(buf, sizeof(buf), app_state_get());
         } else {
             console_fmt_denied(buf, sizeof(buf), console_identify(line), app_state_get(), app_state_failsafe_cause());
         }
@@ -243,6 +260,11 @@ static void execute(const char *line)
             say(console_msg_beep_error(console_parse_beep(line, &hz, &dur)));
         } else if (named == CONSOLE_CMD_ENC) {
             say(console_msg_enc_error(console_parse_enc(line)));
+        } else if (named == CONSOLE_CMD_TOF) {
+            static char terr[500];
+            console_tof_t tp = console_parse_tof(line);
+            console_fmt_tof_error(terr, sizeof(terr), &tp);
+            say(terr);
         } else if (named == CONSOLE_CMD_PID) {
             static char perr[700];   // перелік форм ≈ 600 байтів UTF-8
             console_pid_t p = console_parse_pid(line);
@@ -273,6 +295,10 @@ static void execute(const char *line)
     case CONSOLE_CMD_PID_SAVE:
     case CONSOLE_CMD_PID_TRACE:
         do_pid(cmd, line);
+        break;
+    case CONSOLE_CMD_TOF:
+    case CONSOLE_CMD_TOF_REINIT:
+        do_tof(cmd);
         break;
     case CONSOLE_CMD_HELP:
         say(console_help_text());

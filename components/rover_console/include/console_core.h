@@ -48,7 +48,10 @@ typedef enum {
     CONSOLE_CMD_PID_SET,   // зміна одного числа набору
     CONSOLE_CMD_PID_MODE,  // pid on | pid off
     CONSOLE_CMD_PID_SAVE,  // збереження набору в памʼять плати
-    CONSOLE_CMD_PID_TRACE  // pid trace on | pid trace off
+    CONSOLE_CMD_PID_TRACE, // pid trace on | pid trace off
+    // Далекомірі (phase6-tof, spec AC-09, AC-10, AC-11). Хибна форма — CONSOLE_CMD_BAD_ARGS.
+    CONSOLE_CMD_TOF,       // показ далекомірів і секторів (усі стани)
+    CONSOLE_CMD_TOF_REINIT // повторна ініціалізація відмовивших далекомірів (лише DISARMED)
 } console_cmd_t;
 
 void console_init(console_t *c);
@@ -142,6 +145,28 @@ void console_fmt_ui_denied(char *buf, size_t n, ui_result_t r, app_state_t state
 // Рядок про світло, зумер і індикатор для status (spec AC-13).
 void console_fmt_ui_status(char *buf, size_t n, bool expander_ok, bool head, bool red, bool green, bool rear_auto,
                            bool indicator_red, bool buzzer_on, uint32_t remaining_ms);
+
+// ---------- Команда далекомірів tof (phase6-tof; spec AC-09, AC-10, AC-11, матриця дозволів) ----------
+
+typedef enum {
+    CONSOLE_TOF_SHOW,          // «tof»
+    CONSOLE_TOF_REINIT,        // «tof reinit»
+    CONSOLE_TOF_ERR_WORD,      // невідоме слово (зокрема інший регістр чи обрізане «reinit»)
+    CONSOLE_TOF_ERR_THRESHOLD, // спроба задати поріг: число чи слово thr, threshold, limit, mm, set, поріг
+    CONSOLE_TOF_ERR_EXTRA      // зайві слова після reinit
+} console_tof_form_t;
+
+typedef struct {
+    console_tof_form_t form;
+} console_tof_t;
+
+console_tof_t console_parse_tof(const char *line);
+
+// Дозвіл форми за станом: показ — усі стани, reinit — лише DISARMED. Для хибних форм — true (відмова за формою).
+bool console_tof_allowed(console_tof_form_t form, app_state_t state);
+
+void console_fmt_tof_error(char *buf, size_t n, const console_tof_t *p);
+void console_fmt_tof_denied(char *buf, size_t n, app_state_t state);
 
 // ---------- Команда регулятора pid (phase5-pid; spec AC-03, AC-04, AC-09, AC-15, матриця дозволів) ----------
 
