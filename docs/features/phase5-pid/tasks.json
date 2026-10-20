@@ -1,0 +1,223 @@
+{
+  "slug": "phase5-pid",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Створити pid_core: набір коефіцієнтів, перевірка чисел, запис із версією і CRC32",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-04",
+        "AC-07",
+        "AC-18"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений, серед тестів — усі випадки з чекліста; `check_core_headers.sh` чистий для `pid_core.c`; `idf.py build` без помилок і нових попереджень",
+      "files_hint": [
+        "components/pid/pid_core.c",
+        "components/pid/include/pid_core.h",
+        "components/pid/CMakeLists.txt",
+        "test/host/test_pid.c"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t1-pid-core-set-record.md",
+      "status": "todo"
+    },
+    {
+      "id": "T2",
+      "title": "Додати в pid_core крок регулятора: задана з мікшера, розгін, P/I/D, вихід у напрямку цілі, швидкість борту",
+      "layer": "domain",
+      "deps": [
+        "T1"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-09",
+        "AC-10",
+        "AC-13",
+        "AC-18"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений з тестами кроку, розгону й насичення; `check_core_headers.sh` чистий; `idf.py build` без помилок і нових попереджень",
+      "files_hint": [
+        "components/pid/pid_core.c",
+        "components/pid/include/pid_core.h",
+        "test/host/test_pid.c"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t2-pid-core-step.md",
+      "status": "todo"
+    },
+    {
+      "id": "T3",
+      "title": "Додати в pid_core кадр трасування і тексти: рядок трасування, показ стану регулятора",
+      "layer": "domain",
+      "deps": [
+        "T2"
+      ],
+      "acs": [
+        "AC-03",
+        "AC-05",
+        "AC-18"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений з тестами формату; `idf.py build` без помилок і нових попереджень",
+      "files_hint": [
+        "components/pid/pid_core.c",
+        "components/pid/include/pid_core.h",
+        "test/host/test_pid.c"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t3-pid-core-text.md",
+      "status": "todo"
+    },
+    {
+      "id": "T4",
+      "title": "Вбудувати регулятор у drive_ctl_step: задана щотакту, крок лише на новому знімку, фіксація режиму при озброєнні",
+      "layer": "app",
+      "deps": [
+        "T2",
+        "T3"
+      ],
+      "acs": [
+        "AC-02",
+        "AC-13",
+        "AC-16"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений (наявні тести фаз 1–4 без змін у поведінці); `idf.py build` без помилок і нових попереджень",
+      "files_hint": [
+        "components/drive/drive_core.c",
+        "components/drive/include/drive_core.h",
+        "components/drive/CMakeLists.txt",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t4-drive-core-regulate.md",
+      "status": "todo"
+    },
+    {
+      "id": "T5",
+      "title": "Додати в drive_ctl_step відкати і зупинки: недоступні енкодери, застарілий знімок, скидання при зупинках, відмова озброєння під час збереження",
+      "layer": "app",
+      "deps": [
+        "T4"
+      ],
+      "acs": [
+        "AC-12",
+        "AC-12b",
+        "AC-14",
+        "AC-15"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений з тестами кожної гілки; `idf.py build` без помилок і нових попереджень",
+      "files_hint": [
+        "components/drive/drive_core.c",
+        "components/drive/include/drive_core.h",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t5-drive-core-fallbacks.md",
+      "status": "todo"
+    },
+    {
+      "id": "T6",
+      "title": "Додати в console_core команду pid: форми, відмови, матриця дозволів за станом",
+      "layer": "ports",
+      "deps": [
+        "T1"
+      ],
+      "acs": [
+        "AC-04",
+        "AC-09",
+        "AC-15"
+      ],
+      "dod": "`test/host/run_tests.sh` зелений з тестами форм і матриці; `idf.py build` без помилок і нових попереджень",
+      "files_hint": [
+        "components/rover_console/console_core.c",
+        "components/rover_console/include/console_core.h",
+        "test/host/test_console.c"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t6-console-pid-command.md",
+      "status": "todo"
+    },
+    {
+      "id": "T7",
+      "title": "Створити pid_hal: набір під portMUX, завантаження й збереження в NVS, задача pid_trace",
+      "layer": "infra",
+      "deps": [
+        "T1",
+        "T3"
+      ],
+      "acs": [
+        "AC-05",
+        "AC-06",
+        "AC-07",
+        "AC-08"
+      ],
+      "dod": "`idf.py build` без помилок і нових попереджень; `check_delays.sh` чистий; логіку перевірено хостовими тестами T1/T3; HAL приймається на залізі (T10)",
+      "files_hint": [
+        "components/pid/pid_hal.c",
+        "components/pid/include/pid_hal.h",
+        "components/pid/CMakeLists.txt"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t7-pid-hal-store-trace.md",
+      "status": "todo"
+    },
+    {
+      "id": "T8",
+      "title": "Підключити регулятор: drive_hal подає знімок і набір, main стартує pid_hal і pid_trace, колбеки консолі",
+      "layer": "wiring",
+      "deps": [
+        "T5",
+        "T6",
+        "T7"
+      ],
+      "acs": [
+        "AC-03",
+        "AC-05",
+        "AC-06"
+      ],
+      "dod": "`idf.py build` без помилок і нових попереджень; `test/host/run_tests.sh` зелений; вільна внутрішня памʼять після старту ≥ 345000 байт — перевіряє Розробник у T10",
+      "files_hint": [
+        "components/drive/drive_hal.c",
+        "components/drive/CMakeLists.txt",
+        "main/main.c"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t8-wire-control-main.md",
+      "status": "todo"
+    },
+    {
+      "id": "T9",
+      "title": "Посилити хостові перевірки: межа потужності 750, core без ESP-IDF, повний прогін з test_pid.c",
+      "layer": "tests",
+      "deps": [
+        "T8"
+      ],
+      "acs": [
+        "AC-18",
+        "AC-19"
+      ],
+      "dod": "усі `check_*.sh` і `run_tests.sh` зелені; `idf.py build` без помилок і нових попереджень",
+      "files_hint": [
+        "test/host/check_calib.sh",
+        "test/host/run_tests.sh",
+        "test/host/README.md"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t9-host-guardrails.md",
+      "status": "todo"
+    },
+    {
+      "id": "T10",
+      "title": "Написати acceptance.md: процедура приймання фази 5 на залізі для Розробника",
+      "layer": "docs",
+      "deps": [
+        "T8"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-02",
+        "AC-10",
+        "AC-13",
+        "AC-14",
+        "AC-20"
+      ],
+      "dod": "`acceptance.md` покриває кожен апаратний AC фази 5 і KPI §7; Розробник підтвердив, що процедура виконувана",
+      "files_hint": [
+        "docs/features/phase5-pid/acceptance.md"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t10-acceptance-checklist.md",
+      "status": "todo"
+    }
+  ]
+}
