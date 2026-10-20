@@ -2,6 +2,7 @@
 #include "drive_core.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #include "battery_calib.h"
 
@@ -72,6 +73,20 @@ void drive_ctl_init(drive_ctl_t *c)
     c->link_alive = false;
     c->link_since_ms = 0;
     c->sw_base = CRSF_SW_UNKNOWN;
+    c->win_mix_l = 0.0f;
+    c->win_mix_r = 0.0f;
+    c->armed_prev = false;
+    c->pid_mode = PID_MODE_UNCONFIGURED;
+    pid_side_reset(&c->pid_side[0]);
+    pid_side_reset(&c->pid_side[1]);
+    c->ramp_rpm[0] = 0.0f;
+    c->ramp_rpm[1] = 0.0f;
+    c->last_ms = 0;
+    c->enc_seen = false;
+    c->enc_intervals = 0;
+    c->enc_t_us = 0;
+    c->enc_stale = false;
+    pid_trace_acc_reset(&c->trace);
 }
 
 static int16_t signed_pm(drive_side_t s)
@@ -141,6 +156,8 @@ const char *drive_block_text(drive_block_t b)
     case DRIVE_BLOCK_LOW_VOLTAGE:     return "напруга нижча за поріг";
     case DRIVE_BLOCK_NOT_NEUTRAL:     return "стік не в нейтралі";
     case DRIVE_BLOCK_NO_EDGE:         return "тумблер не перемикався з DISARM: поверніть його в DISARM і знову в ARM";
+    case DRIVE_BLOCK_PID_SAVING:      return "триває збереження набору регулятора — спробуйте ще раз за мить";
+    case DRIVE_BLOCK_PID_MODE:        return "триває зміна режиму регулятора — спробуйте ще раз за мить";
     }
     return "?";
 }
@@ -238,11 +255,159 @@ static void update_link(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_
     }
 }
 
+// ---------- Регулятор швидкості бортів (phase5-pid; ADR-0001, spec «Поведінка регулятора») ----------
+
+// Колеса борту в порядку FL, FR, RL, RR: лівий — FL і RL, правий — FR і RR.
+static const enc_wheel_t SIDE_WHEEL[2][2] = { {ENC_FL, ENC_RL}, {ENC_FR, ENC_RR} };
+static const char *const WHEEL_NAME[ENC_WHEELS] = { "FL", "FR", "RL", "RR" };
+
+static void pid_reset_sides(drive_ctl_t *c)
+{
+    for (int b = 0; b < 2; b++) {
+        pid_side_reset(&c->pid_side[b]);
+        c->ramp_rpm[b] = 0.0f;
+    }
+}
+
+// Знімок енкодерів застарів (spec AC-12b): є, але від мітки останнього інтервалу минуло понад DRIVE_ENC_STALE_MS
+// (або інтервалу ще не було). Вік беззнаковий у мс: now_ms і мітка — одна шкала esp_timer.
+static bool enc_stale(const drive_ctl_in_t *in)
+{
+    if (!in->enc.valid) return false;
+    if (in->enc.intervals == 0) return true;
+    uint32_t t_ms = (uint32_t)(in->enc.t_us / 1000u);
+    return (uint32_t)(in->now_ms - t_ms) > DRIVE_ENC_STALE_MS;
+}
+
+// Режим і швидкість борту для такту: без регулятора, без енкодерів, за одним чи двома колесами. У ARMED діє режим,
+// зафіксований при озброєнні (spec AC-15); поза ARMED показ бере режим поточного набору (spec AC-03, AC-06, AC-12).
+static void side_view(const drive_ctl_t *c, const drive_ctl_in_t *in, int b, bool stale, pid_side_view_t *v)
+{
+    memset(v, 0, sizeof *v);
+    pid_mode_t mode = in->state == APP_STATE_ARMED ? c->pid_mode : in->pid.mode;
+    enc_wheel_t a = SIDE_WHEEL[b][0], d = SIDE_WHEEL[b][1];
+    bool ok = in->enc.valid && !stale;
+    pid_src_t src = pid_side_speed(ok && in->enc.avail[a], in->enc.rpm[a], ok && in->enc.avail[d], in->enc.rpm[d],
+                                   &v->speed_rpm);
+    if (src == PID_SRC_NONE) {
+        v->mode = PID_SIDE_NO_ENC;
+    } else if (mode != PID_MODE_ON) {
+        v->mode = PID_SIDE_OPEN;
+    } else if (src == PID_SRC_ONE) {
+        v->mode = PID_SIDE_ONE;
+        v->missing = WHEEL_NAME[in->enc.avail[a] ? d : a];
+    } else {
+        v->mode = PID_SIDE_TWO;
+    }
+}
+
+size_t drive_pid_boards_text(pid_mode_t mode, const bool avail[ENC_WHEELS], char *buf, size_t n)
+{
+    static const char *const SIDE_NAME[2] = { "лівий борт", "правий борт" };
+    size_t len = 0;
+    if (n) buf[0] = 0;
+    for (int b = 0; b < 2 && len < n; b++) {
+        enc_wheel_t a = SIDE_WHEEL[b][0], d = SIDE_WHEEL[b][1];
+        const char *sep = b ? "; " : "";
+        int w;
+        if (!avail[a] && !avail[d]) {
+            w = snprintf(buf + len, n - len, "%s%s: без регулятора — немає доступного енкодера (%s, %s)", sep,
+                         SIDE_NAME[b], WHEEL_NAME[a], WHEEL_NAME[d]);
+        } else if (mode != PID_MODE_ON) {
+            w = snprintf(buf + len, n - len, "%s%s: без регулятора (регулятор %s)", sep, SIDE_NAME[b],
+                         mode == PID_MODE_OFF ? "вимкнений" : "не налаштований");
+        } else if (!avail[a] || !avail[d]) {
+            w = snprintf(buf + len, n - len, "%s%s: за одним колесом (%s недоступне)", sep, SIDE_NAME[b],
+                         WHEEL_NAME[avail[a] ? d : a]);
+        } else {
+            w = snprintf(buf + len, n - len, "%s%s: за двома колесами", sep, SIDE_NAME[b]);
+        }
+        if (w < 0) break;
+        len += (size_t)w < n - len ? (size_t)w : n - len - 1;
+    }
+    return len;
+}
+
+// Виходи бортів для виходу мікшера (l, r): з регулятором — частка потужності з кроку pid_core на новому знімку
+// (між знімками тримається); без регулятора — вихід мікшера, як у фазі 4 (spec AC-16).
+static void regulate(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o, float l, float r, float dt_s,
+                     bool fresh, float dt_enc_s, bool stale)
+{
+    const float mix[2] = {l, r};
+    const float limit = (float)DRIVE_PWM_MAX_PERMILLE / 1000.0f;
+    float out[2];
+    for (int b = 0; b < 2; b++) {
+        pid_side_view_t *v = &o->pid_view[b];
+        side_view(c, in, b, stale, v);
+        v->mix = mix[b];
+        if (v->mode != PID_SIDE_TWO && v->mode != PID_SIDE_ONE) {
+            pid_side_reset(&c->pid_side[b]);
+            c->ramp_rpm[b] = 0.0f;
+            out[b] = mix[b];
+            continue;
+        }
+        float req = pid_target_from_mix(mix[b]);
+        c->ramp_rpm[b] = pid_ramp(c->ramp_rpm[b], req, in->pid.v[PID_PARAM_RAMP], dt_s);
+        float tgt = c->ramp_rpm[b];
+        if (tgt == 0.0f) {
+            pid_side_reset(&c->pid_side[b]);
+            out[b] = 0.0f;
+        } else if (fresh) {
+            out[b] = pid_side_step(&c->pid_side[b], &in->pid, tgt, v->speed_rpm, dt_enc_s, limit);
+        } else {
+            out[b] = c->pid_side[b].out;
+            if ((out[b] > 0.0f) != (tgt > 0.0f)) out[b] = 0.0f;   // ціль змінила знак до нового знімка
+        }
+        v->target_rpm = tgt;
+        v->out = out[b];
+    }
+    o->out = drive_outputs_from(out[0], out[1]);
+    o->left_permille = signed_pm(o->out.left);
+    o->right_permille = signed_pm(o->out.right);
+}
+
 void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o)
 {
     *o = (drive_ctl_out_t){0};
     o->out = drive_outputs_off();
     o->reason = DRIVE_REASON_NONE;
+
+    // Регулятор (phase5-pid): dt розгону — інтервал між тактами керування; новий знімок енкодерів — змінився лічильник
+    // інтервалів, dt кроку — різниця їхніх міток; режим фіксується при вході в ARMED (spec AC-15, AC-16).
+    uint32_t dt_ms = c->last_ms != 0 ? (uint32_t)(in->now_ms - c->last_ms) : 20u;
+    c->last_ms = in->now_ms;
+    float dt_s = (float)dt_ms / 1000.0f;
+    bool fresh = in->enc.valid && (!c->enc_seen || in->enc.intervals != c->enc_intervals);
+    float dt_enc_s = c->enc_seen && in->enc.t_us > c->enc_t_us ? (float)(in->enc.t_us - c->enc_t_us) / 1e6f : 0.02f;
+    if (in->enc.valid) {
+        c->enc_seen = true;
+        c->enc_intervals = in->enc.intervals;
+        c->enc_t_us = in->enc.t_us;
+    }
+    bool stale = enc_stale(in);
+    bool regulated = false;
+    if (in->state == APP_STATE_ARMED && !c->armed_prev) {
+        c->pid_mode = in->pid.mode;
+        pid_reset_sides(c);
+        pid_trace_acc_reset(&c->trace);
+    }
+    if (in->state != APP_STATE_ARMED) {
+        pid_reset_sides(c);
+    }
+    c->armed_prev = in->state == APP_STATE_ARMED;
+    // Застарілий знімок у ARMED з увімкненим регулятором (spec AC-12b): подія один раз; оновлення — регулятор з нуля.
+    if (in->state == APP_STATE_ARMED && c->pid_mode == PID_MODE_ON) {
+        if (stale && !c->enc_stale) {
+            c->enc_stale = true;
+            o->events |= DRIVE_EVT_ENC_STALE;
+        } else if (!stale && c->enc_stale && in->enc.valid) {
+            c->enc_stale = false;
+            pid_reset_sides(c);
+            o->events |= DRIVE_EVT_ENC_RESTORED;
+        }
+    } else {
+        c->enc_stale = false;
+    }
 
     update_link(c, in, o);
 
@@ -303,6 +468,8 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
         } else if (battery_is_below_cutoff(in->battery.mv)) {
             o->reason = DRIVE_REASON_LOW_VOLTAGE;
             o->mv = in->battery.mv;
+        } else if (in->pid_saving) {
+            o->reason = DRIVE_REASON_PID_SAVING;   // запис у флеш під час руху заборонений (phase5-pid AC-15)
         } else {
             o->accepted = true;
             o->has_state_request = true;
@@ -338,6 +505,8 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
             c->outputs = drive_outputs_from(l, r);
             c->left_permille = signed_pm(c->outputs.left);
             c->right_permille = signed_pm(c->outputs.right);
+            c->win_mix_l = l;
+            c->win_mix_r = r;
             c->window_active = true;
             c->accepted_ms = in->now_ms;
             c->min_mv = in->battery.mv;
@@ -377,6 +546,9 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
         bool edge = crsf_edge(&c->sw_base, it.sw);
         if (in->state == APP_STATE_DISARMED && edge && !o->has_state_request) {
             drive_block_t blk = arm_conditions(c, in->state, &in->battery, &it, in->now_ms);
+            if (blk == DRIVE_BLOCK_NONE && in->pid_saving) {
+                blk = DRIVE_BLOCK_PID_SAVING;   // phase5-pid AC-15
+            }
             if (blk == DRIVE_BLOCK_NONE) {
                 o->has_state_request = true;
                 o->state_request = APP_STATE_ARMED;   // виходи лишаються вимкненими; STBY підніметься в ARMED
@@ -394,9 +566,8 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
             } else {
                 float l, r;
                 drive_mix(it.throttle, it.steer, &l, &r);
-                o->out = drive_outputs_from(l, r);
-                o->left_permille = signed_pm(o->out.left);
-                o->right_permille = signed_pm(o->out.right);
+                regulate(c, in, o, l, r, dt_s, fresh, dt_enc_s, stale);
+                regulated = true;
             }
         }
     }
@@ -414,9 +585,11 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
         if (in->battery.mv < c->min_mv) {
             c->min_mv = in->battery.mv;
         }
-        o->out = c->outputs;
-        o->left_permille = c->left_permille;
-        o->right_permille = c->right_permille;
+        regulate(c, in, o, c->win_mix_l, c->win_mix_r, dt_s, fresh, dt_enc_s, stale);
+        regulated = true;
+        c->outputs = o->out;
+        c->left_permille = o->left_permille;
+        c->right_permille = o->right_permille;
         o->remaining_ms = DRIVE_WINDOW_MS - (uint32_t)(in->now_ms - c->accepted_ms);
         o->min_mv = c->min_mv;
     }
@@ -437,6 +610,16 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
             o->accepted = false;
             o->reason = DRIVE_REASON_TRANSITION_REFUSED;
         }
+        regulated = false;
+    }
+
+    // Такт без руху (нейтраль, зупинка, поза ARMED): стан регулятора скинуто, показ — лише режими й швидкості.
+    if (!regulated) {
+        pid_reset_sides(c);
+        for (int b = 0; b < 2; b++) side_view(c, in, b, stale, &o->pid_view[b]);
+    }
+    if (in->state == APP_STATE_ARMED) {
+        o->trace_ready = pid_trace_acc_add(&c->trace, o->pid_view, in->now_ms, true, &o->trace);
     }
 }
 
@@ -463,6 +646,12 @@ void drive_reason_text(drive_reason_t r, uint32_t mv, char *buf, size_t n)
         break;
     case DRIVE_REASON_REMOTE_ONLY:
         snprintf(buf, n, "керує пульт; консоль — після перезапуску без нього");
+        break;
+    case DRIVE_REASON_PID_SAVING:
+        snprintf(buf, n, "триває збереження набору регулятора — спробуйте ще раз за мить");
+        break;
+    case DRIVE_REASON_PID_MODE:
+        snprintf(buf, n, "триває зміна режиму регулятора — спробуйте ще раз за мить");
         break;
     case DRIVE_REASON_NONE:
         snprintf(buf, n, "відмови немає");
@@ -506,4 +695,17 @@ void drive_disarm_text(app_state_t state_before, bool has_req, app_state_t req, 
     }
 }
 
-
+void drive_arm_refused(drive_ctl_out_t *o, bool have_req, pid_busy_t busy)
+{
+    bool mode = busy == PID_BUSY_MODE;
+    o->has_state_request = false;
+    if (have_req && o->accepted) {
+        o->accepted = false;
+        o->reason = mode ? DRIVE_REASON_PID_MODE : DRIVE_REASON_PID_SAVING;
+    }
+    if (o->events & DRIVE_EVT_REMOTE_ARMED) {
+        o->events &= ~DRIVE_EVT_REMOTE_ARMED;
+        o->events |= DRIVE_EVT_ARM_REFUSED;
+        o->arm_block = mode ? DRIVE_BLOCK_PID_MODE : DRIVE_BLOCK_PID_SAVING;
+    }
+}

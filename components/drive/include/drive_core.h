@@ -9,8 +9,11 @@
 #include "app_state.h"
 #include "battery_core.h"
 #include "crsf_core.h"
+#include "encoders_core.h"
+#include "pid_core.h"
 
-// Обмеження потужності борту, проміле від повної (конституція, п. 7: ШІМ ≤ 0.75 до завершення фази 5).
+// Межа потужності борту, проміле від повної (phase5-pid spec AC-09: 0.75 у фазі 5; підняття винесено разом із захистом
+// від заклинення, spec §3). Консоль її не змінює.
 #define DRIVE_PWM_MAX_PERMILLE 750
 
 typedef struct {
@@ -54,7 +57,9 @@ typedef enum {
     DRIVE_REASON_NO_MEASUREMENT,
     DRIVE_REASON_OUT_OF_RANGE,
     DRIVE_REASON_TRANSITION_REFUSED,  // автомат станів відхилив запитаний перехід
-    DRIVE_REASON_REMOTE_ONLY          // стендовий режим закінчився: озброєння й рух задає лише пульт (ADR-0003)
+    DRIVE_REASON_REMOTE_ONLY,         // стендовий режим закінчився: озброєння й рух задає лише пульт (ADR-0003)
+    DRIVE_REASON_PID_SAVING,          // триває збереження набору регулятора в памʼять плати (phase5-pid AC-15)
+    DRIVE_REASON_PID_MODE             // триває зміна режиму регулятора з консолі (phase5-pid AC-15, рев'ю R1)
 } drive_reason_t;
 
 typedef enum {
@@ -83,6 +88,18 @@ typedef struct {
     bool link_alive;           // звʼязок живий (останній кадр каналів не старший за 500 мс)
     uint32_t link_since_ms;    // мітка першого кадру після останньої втрати (початок стабільного звʼязку)
     crsf_switch_t sw_base;     // попереднє положення тумблера; UNKNOWN на старті й після кожної втрати звʼязку
+    // --- phase5-pid (ADR-0001) ---
+    float win_mix_l, win_mix_r;    // вихід мікшера стендової команди на вікно (виходи перераховуються щотакту)
+    bool armed_prev;               // попередній такт був у ARMED: вхід в ARMED фіксує режим регулятора
+    pid_mode_t pid_mode;           // режим регулятора, зафіксований при вході в ARMED (spec AC-15, AC-16)
+    pid_side_t pid_side[2];        // стан регулятора лівого й правого борту
+    float ramp_rpm[2];             // задана після розгону, об/хв
+    uint32_t last_ms;              // мітка попереднього такту (dt розгону)
+    bool enc_seen;                 // знімок енкодерів уже оброблено хоч раз
+    uint32_t enc_intervals;        // лічильник інтервалів останнього обробленого знімка
+    uint64_t enc_t_us;             // мітка останнього обробленого знімка
+    bool enc_stale;                // знімок застарів (spec AC-12b): подія журналу — один раз
+    pid_trace_acc_t trace;         // накопичення кадру трасування (ADR-0003)
 } drive_ctl_t;
 
 // Таймер звʼязку: втрата, коли минуло строго більше 500 мс від мітки останнього кадру каналів (конституція, п. 7).
@@ -96,6 +113,8 @@ typedef struct {
 #define DRIVE_EVT_ARM_REFUSED (1u << 4)       // фронт тумблера відхилено: причина в arm_block
 #define DRIVE_EVT_FAILSAFE_EXIT (1u << 5)     // запит виходу FAILSAFE → DISARMED (звʼязок відновлено)
 #define DRIVE_EVT_CAUSE_UPGRADE (1u << 6)     // відсічка по напрузі у FAILSAFE через звʼязок: причина стає «напруга»
+#define DRIVE_EVT_ENC_STALE (1u << 7)         // знімок енкодерів застарів: обидва борти без регулятора (phase5-pid AC-12b)
+#define DRIVE_EVT_ENC_RESTORED (1u << 8)      // знімок енкодерів знову оновлюється: регулятор з нуля
 
 // Стабільний звʼязок для виходу з FAILSAFE: безперервно живий від першого кадру після втрати (spec AC-08).
 #define DRIVE_LINK_STABLE_MS 1000
@@ -108,8 +127,22 @@ typedef enum {
     DRIVE_BLOCK_NO_MEASUREMENT, // вимірювання напруги немає або застаріло
     DRIVE_BLOCK_LOW_VOLTAGE,    // напруга нижча за поріг
     DRIVE_BLOCK_NOT_NEUTRAL,    // стік не в нейтралі
-    DRIVE_BLOCK_NO_EDGE         // тумблер уже в ARM (чи база невідома): треба повернути в DISARM і знову в ARM
+    DRIVE_BLOCK_NO_EDGE,        // тумблер уже в ARM (чи база невідома): треба повернути в DISARM і знову в ARM
+    DRIVE_BLOCK_PID_SAVING,     // триває збереження набору регулятора в памʼять плати (phase5-pid AC-15)
+    DRIVE_BLOCK_PID_MODE        // триває зміна режиму регулятора з консолі (phase5-pid AC-15, рев'ю R1)
 } drive_block_t;
+
+// Знімок енкодерів для регулятора (phase5-pid; ADR-0001): швидкість колеса в об/хв, порядок FL, FR, RL, RR.
+typedef struct {
+    bool valid;                  // знімок отримано (задача encoders працює)
+    bool avail[ENC_WHEELS];
+    float rpm[ENC_WHEELS];
+    uint32_t intervals;          // лічильник інтервалів вимірювання
+    uint64_t t_us;               // мітка останнього інтервалу, мкс від старту (та сама шкала, що й now_ms × 1000)
+} drive_enc_in_t;
+
+// Знімок вважається застарілим, якщо від мітки інтервалу минуло понад стільки мс (spec AC-12b; рішення Розробника).
+#define DRIVE_ENC_STALE_MS 100
 
 typedef struct {
     uint32_t now_ms;
@@ -119,6 +152,10 @@ typedef struct {
     crsf_snapshot_t rc;          // знімок приймача (phase3-crsf); без кадрів (have_frame = false) — стендовий режим
     app_failsafe_cause_t failsafe_cause;  // причина поточного FAILSAFE з app_state (NONE поза FAILSAFE)
     bool outputs_inhibited;      // control не підписано на Task WDT (ADR-0004 фази 1): виходи вимкнені, ARMED не запитується
+    // --- phase5-pid ---
+    drive_enc_in_t enc;          // знімок енкодерів; нульова ініціалізація — енкодерів немає (режим без регулятора)
+    pid_set_t pid;               // копія набору коефіцієнтів і режиму; нульова ініціалізація — «не налаштований»
+    bool pid_saving;             // триває запис набору в памʼять плати: озброєння відхиляється (spec AC-15)
 } drive_ctl_in_t;
 
 typedef struct {
@@ -136,13 +173,27 @@ typedef struct {
     app_failsafe_cause_t failsafe_cause;  // причина, якщо state_request == FAILSAFE (ADR-0002)
     drive_block_t arm_block;     // перша невиконана умова, якщо events & DRIVE_EVT_ARM_REFUSED
     uint32_t events;             // DRIVE_EVT_* для журналу
+    // --- phase5-pid ---
+    pid_side_view_t pid_view[2]; // стан бортів для показу `pid` і кадру трасування
+    bool trace_ready;            // накопичено кадр трасування (кожні PID_TRACE_TICKS тактів у ARMED)
+    pid_trace_frame_t trace;
 } drive_ctl_out_t;
+
+// Режим бортів для журналу старту (spec AC-12; рев'ю F8): за двома чи одним колесом, без регулятора (режим набору
+// не «увімкнений») або без регулятора через відсутність доступного енкодера; avail — у порядку FL, FR, RL, RR.
+// Повертає довжину, завжди завершує нулем (n > 0).
+size_t drive_pid_boards_text(pid_mode_t mode, const bool avail[ENC_WHEELS], char *buf, size_t n);
 
 void drive_ctl_init(drive_ctl_t *c);
 
 // Один такт керування (20 мс). Чиста функція часу й входів: рішення про виходи й запит стану.
 // Інваріант: коли has_state_request, виходи вже вимкнені (ADR-0002).
 void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *out);
+
+// Дозвіл на ARMED не отримано (phase5-pid AC-15; рев'ю F1, R1, S1): HAL викликає після pid_hal_arm_begin == false.
+// Знімає запит переходу; запит консолі (have_req) стає відмовою, подія пульта «озброєно» — «відмова»; причина —
+// збереження набору (PID_BUSY_SAVE) чи зміна режиму (PID_BUSY_MODE).
+void drive_arm_refused(drive_ctl_out_t *o, bool have_req, pid_busy_t busy);
 
 // Пояснення відмови українською (mv — виміряна напруга для LOW_VOLTAGE).
 void drive_reason_text(drive_reason_t r, uint32_t mv, char *buf, size_t n);

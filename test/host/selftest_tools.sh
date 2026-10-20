@@ -85,5 +85,19 @@ expect "check_calib ловить розходження знаків коліс"
 expect "check_calib мовчить на узгоджених значеннях" 0 "$HERE/check_calib.sh" "$TMP/cgood"
 expect "check_calib мовчить на репозиторії" 0 "$HERE/check_calib.sh"
 
+# --- check_power_limit.sh (phase5-pid T9, AC-09, AC-19): межа потужності — 750 проміле у drive_core.h, ніде іншим числом
+mkdir -p "$TMP/pgood/components/drive/include" "$TMP/pbad1/components/drive/include" "$TMP/pbad2/components/drive/include" \
+         "$TMP/pbad2/components/pid" "$TMP/pbad3/components/drive/include"
+printf '#define DRIVE_PWM_MAX_PERMILLE 750\n' >"$TMP/pgood/components/drive/include/drive_core.h"
+printf '#define DRIVE_PWM_MAX_PERMILLE 800\n' >"$TMP/pbad1/components/drive/include/drive_core.h"
+printf '#define DRIVE_PWM_MAX_PERMILLE 750\n' >"$TMP/pbad2/components/drive/include/drive_core.h"
+printf 'static const float limit = 0.9f;  // PWM_MAX\n#define PID_PWM_MAX_PERMILLE 900\n' >"$TMP/pbad2/components/pid/pid_core.c"
+printf '/* без межі */\n' >"$TMP/pbad3/components/drive/include/drive_core.h"
+expect "check_power_limit ловить межу 800 замість 750" nz "$HERE/check_power_limit.sh" "$TMP/pbad1"
+expect "check_power_limit ловить другу константу межі в іншому файлі" nz "$HERE/check_power_limit.sh" "$TMP/pbad2"
+expect "check_power_limit ловить відсутню межу" nz "$HERE/check_power_limit.sh" "$TMP/pbad3"
+expect "check_power_limit мовчить на межі 750" 0 "$HERE/check_power_limit.sh" "$TMP/pgood"
+expect "check_power_limit мовчить на репозиторії" 0 "$HERE/check_power_limit.sh"
+
 [ $fail -eq 0 ] && echo "selftest_tools: усе гаразд" || echo "selftest_tools: ЄСТЬ ПОМИЛКИ"
 exit $fail

@@ -7,6 +7,7 @@
 #include "crsf_hal.h"
 #include "driver/gpio.h"
 #include "driver/ledc.h"
+#include "encoders_hal.h"
 #include "esp_log.h"
 #include "esp_task_wdt.h"
 #include "esp_timer.h"
@@ -14,6 +15,7 @@
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "pid_hal.h"
 
 #define CONTROL_STACK 4096
 #define CONTROL_PRIORITY 5
@@ -242,6 +244,28 @@ static void log_events(const drive_ctl_out_t *o, const drive_ctl_in_t *in, uint3
     if (o->events & DRIVE_EVT_FAILSAFE_EXIT) {
         ESP_LOGI(TAG, "вихід із FAILSAFE: звʼязок стабільний, тумблер у DISARM");
     }
+    if (o->events & DRIVE_EVT_ENC_STALE) {
+        ESP_LOGW(TAG, "вимірювання швидкості коліс не оновлюється понад %u мс — обидва борти без регулятора",
+                 (unsigned)DRIVE_ENC_STALE_MS);
+    }
+    if (o->events & DRIVE_EVT_ENC_RESTORED) {
+        ESP_LOGI(TAG, "вимірювання швидкості коліс відновилось — регулятор бортів з нуля");
+    }
+}
+
+// Знімок енкодерів для регулятора (ADR-0001 фази 5): швидкість коліс в об/хв, доступність, лічильник і мітка інтервалу.
+// Задача encoders, що не стартувала, дає лічильник 0 — drive_core трактує це як застарілий знімок (spec AC-12b).
+static void enc_input(drive_enc_in_t *e)
+{
+    enc_state_t st;
+    encoders_state_get(&st);
+    e->valid = true;
+    for (int i = 0; i < ENC_WHEELS; i++) {
+        e->avail[i] = st.w[i].available;
+        e->rpm[i] = (float)enc_core_rpm(st.w[i].speed_pps);
+    }
+    e->intervals = st.intervals;
+    e->t_us = st.last_us;
 }
 
 static void control_task(void *arg)
@@ -273,6 +297,8 @@ static void control_task(void *arg)
         in.outputs_inhibited = !s_running;
         battery_get_snapshot(&in.battery);
         crsf_snapshot_get(&in.rc);   // без приймача знімок порожній: стендовий режим (ADR-0001)
+        enc_input(&in.enc);           // регулятор (phase5-pid, ADR-0001): швидкість коліс зі знімка encoders
+        pid_hal_get(&in.pid, &in.pid_saving);
         uint32_t now = now_ms();  // час беремо ПІСЛЯ зчитування черги й знімка: вік не стає відʼємним
         in.now_ms = now;
         if (got && (int32_t)(now - item.t_ms) <= REQUEST_MAX_AGE_MS) {
@@ -285,6 +311,10 @@ static void control_task(void *arg)
         drive_ctl_step(&ctl, &in, &out);
 
         apply_outputs(&out.out);  // спершу виходи (ADR-0002)
+        pid_hal_publish_view(out.pid_view);   // показ `pid` і кадр трасування (ADR-0003): друкує задача pid_trace
+        if (out.trace_ready) {
+            pid_hal_publish_trace(&out.trace);
+        }
         uint32_t applied_ms = now_ms();
         // Новий кадр, що керує бортами з пульта (ARMED, без запиту переходу): мітка кадру від crsf_rx → мітка запису.
         if (in.state == APP_STATE_ARMED && ctl.remote_active && ctl.link_alive && !out.has_state_request &&
@@ -306,6 +336,17 @@ static void control_task(void *arg)
             if (out.state_request == APP_STATE_FAILSAFE) {
                 // Вхід у FAILSAFE завжди з причиною; повторне повідомлення «напруга» підвищує причину (ADR-0002).
                 transition_ok = app_state_enter_failsafe(out.failsafe_cause) == APP_SM_OK;
+            } else if (out.state_request == APP_STATE_ARMED) {
+                // Дозвіл на ARMED береться атомарно проти запису набору і зміни режиму (spec AC-15, рев'ю F1, R1):
+                // ознака «триває збереження» на початку такту могла застаріти, поки такт ішов.
+                pid_busy_t busy;
+                if (pid_hal_arm_begin(&busy)) {
+                    transition_ok = app_state_request(out.state_request) == APP_SM_OK;
+                    pid_hal_arm_end();
+                } else {
+                    transition_ok = false;
+                    drive_arm_refused(&out, have_req, busy);   // рішення й причина — у drive_core (рев'ю S1)
+                }
             } else {
                 transition_ok = app_state_request(out.state_request) == APP_SM_OK;
             }

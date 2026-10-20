@@ -546,6 +546,102 @@ static void test_enc_error_reason(void)
     CHECK(strstr(console_msg_enc_error(CONSOLE_ENC_RESET_TYPO), "регістр") != NULL);
 }
 
+// ---------- Фаза 5: команда pid (spec AC-03, AC-04, AC-09, AC-15; матриця дозволів) ----------
+static void test_pid_forms(void)
+{
+    console_pid_t p = console_parse_pid("pid");
+    CHECK(p.form == CONSOLE_PID_SHOW);
+    p = console_parse_pid("  pid   kp 1.2 ");
+    CHECK(p.form == CONSOLE_PID_SET && p.param == PID_PARAM_KP && p.value == 1.2f);
+    p = console_parse_pid("pid ramp 300");
+    CHECK(p.form == CONSOLE_PID_SET && p.param == PID_PARAM_RAMP && p.value == 300.0f);
+    p = console_parse_pid("pid kd 0");
+    CHECK(p.form == CONSOLE_PID_SET && p.param == PID_PARAM_KD && p.value == 0.0f);
+    CHECK(console_parse_pid("pid on").form == CONSOLE_PID_ON);
+    CHECK(console_parse_pid("pid off").form == CONSOLE_PID_OFF);
+    CHECK(console_parse_pid("pid save").form == CONSOLE_PID_SAVE);
+    CHECK(console_parse_pid("pid trace on").form == CONSOLE_PID_TRACE_ON);
+    CHECK(console_parse_pid("pid trace off").form == CONSOLE_PID_TRACE_OFF);
+}
+
+static void test_pid_errors(void)
+{
+    // AC-04: відʼємне, нечислове, нескінченне, кома, невідома назва, нульовий розгін, без значення, зайві слова.
+    console_pid_t p = console_parse_pid("pid kp -1");
+    CHECK(p.form == CONSOLE_PID_ERR_VALUE && p.why != NULL);
+    CHECK(console_parse_pid("pid kp abc").form == CONSOLE_PID_ERR_NUMBER);
+    CHECK(console_parse_pid("pid kp nan").form == CONSOLE_PID_ERR_NUMBER);
+    CHECK(console_parse_pid("pid kp inf").form == CONSOLE_PID_ERR_NUMBER);
+    CHECK(console_parse_pid("pid kp 1e3").form == CONSOLE_PID_ERR_NUMBER);
+    CHECK(console_parse_pid("pid kp 1,2").form == CONSOLE_PID_ERR_NUMBER);
+    CHECK(console_parse_pid("pid foo 1").form == CONSOLE_PID_ERR_WORD);
+    CHECK(console_parse_pid("pid ramp 0").form == CONSOLE_PID_ERR_VALUE);
+    CHECK(console_parse_pid("pid kp").form == CONSOLE_PID_ERR_MISSING);
+    CHECK(console_parse_pid("pid trace").form == CONSOLE_PID_ERR_MISSING);
+    CHECK(console_parse_pid("pid trace maybe").form == CONSOLE_PID_ERR_WORD);
+    CHECK(console_parse_pid("pid kp 1 2").form == CONSOLE_PID_ERR_EXTRA);
+    CHECK(console_parse_pid("pid on now").form == CONSOLE_PID_ERR_EXTRA);
+    CHECK(console_parse_pid("pid save x").form == CONSOLE_PID_ERR_EXTRA);
+    CHECK(console_parse_pid("pid trace on x").form == CONSOLE_PID_ERR_EXTRA);
+    CHECK(console_parse_pid("pid KP 1").form == CONSOLE_PID_ERR_WORD);
+    // AC-09: будь-яка спроба змінити межу — окрема відмова.
+    CHECK(console_parse_pid("pid limit 1.0").form == CONSOLE_PID_ERR_LIMIT);
+    CHECK(console_parse_pid("pid pwm 0.9").form == CONSOLE_PID_ERR_LIMIT);
+    CHECK(console_parse_pid("pid max").form == CONSOLE_PID_ERR_LIMIT);
+
+    char buf[700];   // відповідь із переліком форм — до ≈ 600 байтів UTF-8
+    p = console_parse_pid("pid foo 1");
+    console_fmt_pid_error(buf, sizeof buf, &p);
+    CHECK(strstr(buf, "pid kp") != NULL && strstr(buf, "pid save") != NULL && strstr(buf, "pid trace on") != NULL);
+    CHECK(strstr(buf, "невідʼємн") != NULL && strstr(buf, "додатн") != NULL);
+    p = console_parse_pid("pid kp 1,2");
+    console_fmt_pid_error(buf, sizeof buf, &p);
+    CHECK(strstr(buf, "крапк") != NULL);
+    p = console_parse_pid("pid kp -1");
+    console_fmt_pid_error(buf, sizeof buf, &p);
+    CHECK(strstr(buf, "kp") != NULL && strstr(buf, p.why) != NULL);
+    p = console_parse_pid("pid limit 1.0");
+    console_fmt_pid_error(buf, sizeof buf, &p);
+    CHECK(strstr(buf, "межа потужності") != NULL && strstr(buf, "прошивки") != NULL);
+
+    // Через console_parse: хибна форма — BAD_ARGS у будь-якому стані (AC-04), раніше за право за станом.
+    for (int st = 0; st < APP_STATE_COUNT; st++) {
+        CHECK(console_parse("pid kp -1", (app_state_t)st) == CONSOLE_CMD_BAD_ARGS);
+        CHECK(console_parse("pid limit 1", (app_state_t)st) == CONSOLE_CMD_BAD_ARGS);
+        CHECK(console_identify("pid on") == CONSOLE_CMD_PID);
+    }
+}
+
+static void test_pid_matrix(void)
+{
+    // 7 форм × 7 станів (spec §5, матриця дозволів): show/set/trace — усі; on/off — DISARMED; save — не ARMED/OBSTACLE_HOLD.
+    int pairs = 0;
+    for (int st = 0; st < APP_STATE_COUNT; st++) {
+        app_state_t a = (app_state_t)st;
+        bool disarmed = st == APP_STATE_DISARMED;
+        bool moving = st == APP_STATE_ARMED || st == APP_STATE_OBSTACLE_HOLD;
+        CHECK(console_parse("pid", a) == CONSOLE_CMD_PID);
+        CHECK(console_parse("pid ki 0.05", a) == CONSOLE_CMD_PID_SET);
+        CHECK(console_parse("pid on", a) == (disarmed ? CONSOLE_CMD_PID_MODE : CONSOLE_CMD_DENIED_STATE));
+        CHECK(console_parse("pid off", a) == (disarmed ? CONSOLE_CMD_PID_MODE : CONSOLE_CMD_DENIED_STATE));
+        CHECK(console_parse("pid save", a) == (moving ? CONSOLE_CMD_DENIED_STATE : CONSOLE_CMD_PID_SAVE));
+        CHECK(console_parse("pid trace on", a) == CONSOLE_CMD_PID_TRACE);
+        CHECK(console_parse("pid trace off", a) == CONSOLE_CMD_PID_TRACE);
+        CHECK(console_pid_allowed(CONSOLE_PID_ON, a) == disarmed);
+        CHECK(console_pid_allowed(CONSOLE_PID_SAVE, a) == !moving);
+        pairs += 7;
+    }
+    CHECK(pairs == 49);
+    printf("ПОКРИТТЯ пар форма pid × стан: %d з 49\n", pairs);
+
+    char buf[320];
+    console_fmt_pid_denied(buf, sizeof buf, CONSOLE_PID_ON, APP_STATE_ARMED);
+    CHECK(strstr(buf, "DISARMED") != NULL && strstr(buf, "ARMED") != NULL);
+    console_fmt_pid_denied(buf, sizeof buf, CONSOLE_PID_SAVE, APP_STATE_ARMED);
+    CHECK(strstr(buf, "під час руху") != NULL);
+    CHECK(strstr(console_help_text(), "pid") != NULL);
+}
+
 int main(void)
 {
     test_enc_command();
@@ -571,6 +667,9 @@ int main(void)
     test_fmt();
     test_new_messages();
     test_matrix_63();
+    test_pid_forms();
+    test_pid_errors();
+    test_pid_matrix();
     test_light_grammar();
     test_beep_grammar();
     test_ui_messages();

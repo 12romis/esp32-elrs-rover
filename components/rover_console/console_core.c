@@ -91,6 +91,7 @@ static console_cmd_t first_word(const char *line, const char **rest)
     if (n == 5 && strncmp(start, "light", n) == 0) return CONSOLE_CMD_LIGHT;
     if (n == 4 && strncmp(start, "beep", n) == 0) return CONSOLE_CMD_BEEP;
     if (n == 3 && strncmp(start, "enc", n) == 0) return CONSOLE_CMD_ENC;
+    if (n == 3 && strncmp(start, "pid", n) == 0) return CONSOLE_CMD_PID;
     return CONSOLE_CMD_UNKNOWN;
 }
 
@@ -136,6 +137,21 @@ console_cmd_t console_parse(const char *line, app_state_t state)
         default:                   return CONSOLE_CMD_BAD_ARGS;
         }
     }
+    if (cmd == CONSOLE_CMD_PID) {
+        // Хибна форма відмовляє раніше за стан (spec AC-04: у будь-якому стані); далі матриця дозволів.
+        console_pid_t p = console_parse_pid(line);
+        if (p.form >= CONSOLE_PID_ERR_WORD) return CONSOLE_CMD_BAD_ARGS;
+        if (!console_pid_allowed(p.form, state)) return CONSOLE_CMD_DENIED_STATE;
+        switch (p.form) {
+        case CONSOLE_PID_SET:       return CONSOLE_CMD_PID_SET;
+        case CONSOLE_PID_ON:
+        case CONSOLE_PID_OFF:       return CONSOLE_CMD_PID_MODE;
+        case CONSOLE_PID_SAVE:      return CONSOLE_CMD_PID_SAVE;
+        case CONSOLE_PID_TRACE_ON:
+        case CONSOLE_PID_TRACE_OFF: return CONSOLE_CMD_PID_TRACE;
+        default:                    return CONSOLE_CMD_PID;
+        }
+    }
     if (has_args) {
         return CONSOLE_CMD_EXTRA_ARGS;
     }
@@ -163,7 +179,9 @@ const char *console_help_text(void)
            "  drive <тяга> <поворот> — рух, значення від -1 до 1, діє 2 с (лише в стані ARMED і в стендовому режимі, до появи пульта)\n"
            "  light <head|red|green> <on|off> — світло: фари, червоний чи зелений задній ліхтар (DISARMED; в ARMED лише head)\n"
            "  beep <Гц> <мс> — сигнал зумера, цілі числа: 200–5000 Гц і 1–2000 мс (DISARMED і ARMED)\n"
-           "  enc [reset] — знімок енкодерів коліс; reset обнуляє лічильники й відстань (у будь-якому стані)";
+           "  enc [reset] — знімок енкодерів коліс; reset обнуляє лічильники й відстань (у будь-якому стані)\n"
+           "  pid [kp|ki|kd|ramp <число> | on | off | save | trace on|off] — регулятор швидкості бортів: стан, "
+           "зміна числа, увімкнення (DISARMED), збереження (не під час руху), трасування";
 }
 
 const char *console_msg_unknown(void)
@@ -589,4 +607,153 @@ void console_fmt_ui_status(char *buf, size_t n, bool expander_ok, bool head, boo
              expander_ok ? "доступний" : "недоступний", head ? "ввімкнено" : "вимкнено", red ? "ввімкнено" : "вимкнено",
              green ? "ввімкнено" : "вимкнено", rear_auto ? "рух" : "вручну", indicator_red ? "червоний" : "вимкнений",
              buzzer_on ? "звучить" : "мовчить", (unsigned)remaining_ms);
+}
+
+// ---------- Команда регулятора pid (phase5-pid; spec AC-03, AC-04, AC-09, AC-15) ----------
+
+static bool tok_eq(const char *tok, size_t len, const char *word)
+{
+    return strlen(word) == len && strncmp(tok, word, len) == 0;
+}
+
+// Назви, якими можна спробувати змінити межу потужності (spec AC-09: окрема відмова).
+static bool is_limit_word(const char *tok, size_t len)
+{
+    return tok_eq(tok, len, "limit") || tok_eq(tok, len, "pwm") || tok_eq(tok, len, "max") || tok_eq(tok, len, "межа");
+}
+
+console_pid_t console_parse_pid(const char *line)
+{
+    console_pid_t r = {CONSOLE_PID_SHOW, PID_PARAM_KP, 0.0f, NULL};
+    const char *p = line;
+    while (is_space(*p)) p++;
+    while (*p != '\0' && !is_space(*p)) p++;   // слово pid
+
+    const char *tok[4];
+    size_t len[4];
+    int count = 0;
+    for (;;) {
+        while (is_space(*p)) p++;
+        if (*p == '\0') break;
+        const char *start = p;
+        while (*p != '\0' && !is_space(*p)) p++;
+        if (count < 4) {
+            tok[count] = start;
+            len[count] = (size_t)(p - start);
+        }
+        count++;
+    }
+    if (count == 0) return r;
+
+    if (is_limit_word(tok[0], len[0])) {
+        r.form = CONSOLE_PID_ERR_LIMIT;
+        return r;
+    }
+    if (tok_eq(tok[0], len[0], "on") || tok_eq(tok[0], len[0], "off") || tok_eq(tok[0], len[0], "save")) {
+        if (count > 1) {
+            r.form = CONSOLE_PID_ERR_EXTRA;
+        } else {
+            r.form = tok_eq(tok[0], len[0], "on") ? CONSOLE_PID_ON
+                   : tok_eq(tok[0], len[0], "off") ? CONSOLE_PID_OFF : CONSOLE_PID_SAVE;
+        }
+        return r;
+    }
+    if (tok_eq(tok[0], len[0], "trace")) {
+        if (count < 2) {
+            r.form = CONSOLE_PID_ERR_MISSING;
+        } else if (count > 2) {
+            r.form = CONSOLE_PID_ERR_EXTRA;
+        } else if (tok_eq(tok[1], len[1], "on")) {
+            r.form = CONSOLE_PID_TRACE_ON;
+        } else if (tok_eq(tok[1], len[1], "off")) {
+            r.form = CONSOLE_PID_TRACE_OFF;
+        } else {
+            r.form = CONSOLE_PID_ERR_WORD;
+        }
+        return r;
+    }
+    pid_param_t param;
+    if (!pid_param_parse(tok[0], len[0], &param)) {
+        r.form = CONSOLE_PID_ERR_WORD;
+        return r;
+    }
+    r.param = param;
+    if (count < 2) {
+        r.form = CONSOLE_PID_ERR_MISSING;
+        return r;
+    }
+    if (count > 2) {
+        r.form = CONSOLE_PID_ERR_EXTRA;
+        return r;
+    }
+    double v;
+    if (!parse_number(tok[1], len[1], &v)) {
+        r.form = CONSOLE_PID_ERR_NUMBER;
+        return r;
+    }
+    const char *why = pid_value_check(param, (float)v);
+    if (why) {
+        r.form = CONSOLE_PID_ERR_VALUE;
+        r.why = why;
+        return r;
+    }
+    r.form = CONSOLE_PID_SET;
+    r.value = (float)v;
+    return r;
+}
+
+bool console_pid_allowed(console_pid_form_t form, app_state_t state)
+{
+    switch (form) {
+    case CONSOLE_PID_ON:
+    case CONSOLE_PID_OFF:
+        return state == APP_STATE_DISARMED;
+    case CONSOLE_PID_SAVE:
+        return state != APP_STATE_ARMED && state != APP_STATE_OBSTACLE_HOLD;
+    default:
+        return true;
+    }
+}
+
+#define PID_USAGE " Допустимо: «pid» — стан; «pid kp|ki|kd|ramp <число>» — змінити число (kp, ki, kd — скінченні й " \
+                  "невідʼємні, ramp — додатний, десяткова крапка); «pid on», «pid off» — увімкнути чи вимкнути " \
+                  "(лише в DISARMED); «pid save» — зберегти (не під час руху); «pid trace on», «pid trace off» — трасування."
+
+void console_fmt_pid_error(char *buf, size_t n, const console_pid_t *p)
+{
+    switch (p->form) {
+    case CONSOLE_PID_ERR_LIMIT:
+        snprintf(buf, n, "Межу потужності з консолі не змінити: межа потужності — виміряна величина, її змінює лише "
+                         "правка прошивки після запису в журнал вимірювань.");
+        return;
+    case CONSOLE_PID_ERR_VALUE:
+        snprintf(buf, n, "Команда pid: %s — %s." PID_USAGE, pid_param_name(p->param), p->why ? p->why : "недопустиме число");
+        return;
+    case CONSOLE_PID_ERR_NUMBER:
+        snprintf(buf, n, "Команда pid: значення не число — потрібні цифри з десятковою крапкою (не кома), без nan, inf і "
+                         "експоненти." PID_USAGE);
+        return;
+    case CONSOLE_PID_ERR_MISSING:
+        snprintf(buf, n, "Команда pid: бракує значення." PID_USAGE);
+        return;
+    case CONSOLE_PID_ERR_EXTRA:
+        snprintf(buf, n, "Команда pid: зайві слова." PID_USAGE);
+        return;
+    case CONSOLE_PID_ERR_WORD:
+        snprintf(buf, n, "Команда pid: невідоме слово." PID_USAGE);
+        return;
+    default:
+        snprintf(buf, n, "Хибна форма команди pid." PID_USAGE);
+        return;
+    }
+}
+
+void console_fmt_pid_denied(char *buf, size_t n, console_pid_form_t form, app_state_t state)
+{
+    if (form == CONSOLE_PID_SAVE) {
+        snprintf(buf, n, "Стан %s: запис набору в памʼять плати під час руху заборонений — збережіть поза ARMED і "
+                         "OBSTACLE_HOLD (роззброївши ровер).", app_state_name(state));
+    } else {
+        snprintf(buf, n, "Стан %s: вмикати й вимикати регулятор можна лише в стані DISARMED.", app_state_name(state));
+    }
 }

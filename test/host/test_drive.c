@@ -1058,8 +1058,464 @@ static void test_matrix_140(void)
     printf("ПОКРИТТЯ пар команда × стан × режим: %d з 140\n", pairs);
 }
 
+// ---------- phase5-pid T4: регулятор у кроці керування (spec AC-02, AC-13, AC-16; ADR-0001) ----------
+
+static pid_set_t pid_on(float kp, float ki, float ramp, bool on)
+{
+    pid_set_t s;
+    pid_set_init(&s);
+    pid_set_param(&s, PID_PARAM_KP, kp);
+    pid_set_param(&s, PID_PARAM_KI, ki);
+    pid_set_param(&s, PID_PARAM_KD, 0.0f);
+    pid_set_param(&s, PID_PARAM_RAMP, ramp);
+    pid_set_mode(&s, on);
+    return s;
+}
+
+static drive_enc_in_t enc_all(float rpm, uint32_t intervals, uint32_t now_ms)
+{
+    drive_enc_in_t e;
+    memset(&e, 0, sizeof e);
+    e.valid = true;
+    for (int i = 0; i < ENC_WHEELS; i++) { e.avail[i] = true; e.rpm[i] = rpm; }
+    e.intervals = intervals;
+    e.t_us = (uint64_t)now_ms * 1000u;
+    return e;
+}
+
+static drive_ctl_out_t go_pid(drive_ctl_t *c, app_state_t st, uint32_t now, drive_req_kind_t k, float thr,
+                              float steer, pid_set_t pid, drive_enc_in_t enc)
+{
+    drive_ctl_out_t o;
+    drive_ctl_in_t in = in_for(st, now, snap(8000, now), k, thr, steer);
+    in.pid = pid;
+    in.enc = enc;
+    drive_ctl_step(c, &in, &o);
+    return o;
+}
+
+// Стенд: arm і перший такт у ARMED (фіксує режим регулятора з цього такту).
+static uint32_t bench_armed(drive_ctl_t *c, pid_set_t pid, uint32_t t)
+{
+    drive_ctl_init(c);
+    go_pid(c, APP_STATE_DISARMED, t, DRIVE_REQ_ARM, 0, 0, pid, enc_all(0, 1, t));
+    return t + 20;
+}
+
+static void test_pid_bench_regulated(void)
+{
+    drive_ctl_t c;
+    drive_ctl_out_t o;
+    pid_set_t pid = pid_on(0.003f, 0.0f, 100000.0f, true);
+    uint32_t t = bench_armed(&c, pid, 1000);
+    // Стендова команда 0.6 → задана 90 об/хв; швидкість 60 → вихід лише P: 0.003 × 30 = 0.09 (не 0.6 мікшера).
+    o = go_pid(&c, APP_STATE_ARMED, t, DRIVE_REQ_DRIVE, 0.6f, 0.0f, pid, enc_all(60.0f, 2, t));
+    CHECK(o.accepted);
+    CHECK(o.left_permille == 90 && o.right_permille == 90);
+    CHECK(o.pid_view[0].mode == PID_SIDE_TWO && o.pid_view[0].target_rpm == 90.0f);
+    // Наступний такт без запиту: виходи перераховуються з новим знімком (швидкість 90 → нуль похибки → 0).
+    o = go_pid(&c, APP_STATE_ARMED, t + 20, DRIVE_REQ_NONE, 0, 0, pid, enc_all(90.0f, 3, t + 20));
+    CHECK(o.left_permille == 0 && o.out.stby == 1 && o.remaining_ms > 0);
+    // Той самий знімок ще раз: P/I/D не оновлюються, вихід тримається.
+    pid_set_t pi = pid_on(0.003f, 0.5f, 100000.0f, true);
+    t = bench_armed(&c, pi, 5000);
+    o = go_pid(&c, APP_STATE_ARMED, t, DRIVE_REQ_DRIVE, 0.6f, 0.0f, pi, enc_all(60.0f, 2, t));
+    int16_t first = o.left_permille;
+    o = go_pid(&c, APP_STATE_ARMED, t + 20, DRIVE_REQ_NONE, 0, 0, pi, enc_all(60.0f, 2, t));
+    CHECK(o.left_permille == first);
+    o = go_pid(&c, APP_STATE_ARMED, t + 40, DRIVE_REQ_NONE, 0, 0, pi, enc_all(60.0f, 3, t + 40));
+    CHECK(o.left_permille > first);   // новий знімок — накопичена складова зросла
+}
+
+static void test_pid_off_is_phase4(void)
+{
+    // AC-16: регулятор вимкнений чи не налаштований — виходи точно як у фазі 4 (0.6 → 600 проміле).
+    drive_ctl_t c;
+    drive_ctl_out_t o;
+    pid_set_t off = pid_on(0.003f, 0.0f, 300.0f, false);
+    uint32_t t = bench_armed(&c, off, 1000);
+    o = go_pid(&c, APP_STATE_ARMED, t, DRIVE_REQ_DRIVE, 0.6f, 0.0f, off, enc_all(0.0f, 2, t));
+    CHECK(o.left_permille == 600 && o.right_permille == 600);
+    CHECK(o.pid_view[0].mode == PID_SIDE_OPEN);
+    pid_set_t none;
+    pid_set_init(&none);
+    t = bench_armed(&c, none, 3000);
+    o = go_pid(&c, APP_STATE_ARMED, t, DRIVE_REQ_DRIVE, 0.6f, -0.2f, none, enc_all(0.0f, 2, t));
+    CHECK(o.left_permille == 400 && o.right_permille == 750);
+}
+
+static void test_pid_mode_latched(void)
+{
+    // AC-15: режим фіксується при вході в ARMED; «pid on» під час руху діє лише з наступного озброєння.
+    drive_ctl_t c;
+    drive_ctl_out_t o;
+    pid_set_t off = pid_on(0.003f, 0.0f, 100000.0f, false);
+    pid_set_t on = pid_on(0.003f, 0.0f, 100000.0f, true);
+    uint32_t t = bench_armed(&c, off, 1000);
+    go_pid(&c, APP_STATE_ARMED, t, DRIVE_REQ_NONE, 0, 0, off, enc_all(0.0f, 2, t));   // вхід в ARMED: вимкнений
+    o = go_pid(&c, APP_STATE_ARMED, t + 20, DRIVE_REQ_DRIVE, 0.6f, 0.0f, on, enc_all(60.0f, 3, t + 20));
+    CHECK(o.left_permille == 600);
+    go_pid(&c, APP_STATE_DISARMED, t + 40, DRIVE_REQ_NONE, 0, 0, on, enc_all(0.0f, 4, t + 40));
+    go_pid(&c, APP_STATE_DISARMED, t + 60, DRIVE_REQ_ARM, 0, 0, on, enc_all(0.0f, 5, t + 60));
+    o = go_pid(&c, APP_STATE_ARMED, t + 80, DRIVE_REQ_DRIVE, 0.6f, 0.0f, on, enc_all(60.0f, 6, t + 80));
+    CHECK(o.left_permille == 90);
+}
+
+static void test_pid_ramp_in_step(void)
+{
+    // AC-13: задана зростає не швидше за темп (300 об/хв/с × 20 мс = 6 об/хв за такт); нейтраль — нуль одразу.
+    drive_ctl_t c;
+    drive_ctl_out_t o;
+    pid_set_t pid = pid_on(0.01f, 0.0f, 300.0f, true);
+    uint32_t t = bench_armed(&c, pid, 1000);
+    go_pid(&c, APP_STATE_ARMED, t, DRIVE_REQ_NONE, 0, 0, pid, enc_all(0.0f, 2, t));
+    float prev = 0.0f;
+    for (int k = 1; k <= 10; k++) {
+        o = go_pid(&c, APP_STATE_ARMED, t + 20u * (unsigned)k, k == 1 ? DRIVE_REQ_DRIVE : DRIVE_REQ_NONE, 1.0f, 0.0f,
+                   pid, enc_all(0.0f, 2u + (unsigned)k, t + 20u * (unsigned)k));
+        CHECK(o.pid_view[0].target_rpm - prev <= 6.0f + 1e-3f);
+        CHECK(o.pid_view[0].target_rpm > prev);
+        prev = o.pid_view[0].target_rpm;
+    }
+    // Стендова команда з нульовою тягою — задана й вихід нуль у тому ж такті.
+    o = go_pid(&c, APP_STATE_ARMED, t + 300, DRIVE_REQ_DRIVE, 0.0f, 0.0f, pid, enc_all(30.0f, 40, t + 300));
+    CHECK(o.left_permille == 0 && o.right_permille == 0 && o.pid_view[0].target_rpm == 0.0f);
+}
+
+// ---------- phase5-pid T5: відкати, зупинки, збереження (spec AC-12, AC-12b, AC-14, AC-15) ----------
+
+static void test_pid_encoder_availability(void)
+{
+    // AC-12: одне колесо борту недоступне — борт за другим; обидва — борт без регулятора; інший борт регулюється.
+    drive_ctl_t c;
+    drive_ctl_out_t o;
+    pid_set_t pid = pid_on(0.003f, 0.0f, 100000.0f, true);
+    uint32_t t = bench_armed(&c, pid, 1000);
+    drive_enc_in_t e = enc_all(60.0f, 2, t);
+    e.avail[ENC_RL] = false;        // лівий: лише FL
+    e.rpm[ENC_FL] = 30.0f;
+    e.avail[ENC_FR] = false;        // правий: жодного
+    e.avail[ENC_RR] = false;
+    o = go_pid(&c, APP_STATE_ARMED, t, DRIVE_REQ_DRIVE, 0.6f, 0.0f, pid, e);
+    CHECK(o.pid_view[0].mode == PID_SIDE_ONE && strcmp(o.pid_view[0].missing, "RL") == 0);
+    CHECK(o.pid_view[0].speed_rpm == 30.0f);
+    CHECK(o.left_permille == 180);                  // 0.003 × (90 − 30)
+    CHECK(o.pid_view[1].mode == PID_SIDE_NO_ENC);
+    CHECK(o.right_permille == 600);                 // без регулятора: вихід мікшера
+    CHECK(!o.has_state_request);                    // FAILSAFE не настає
+}
+
+static void test_pid_stale_snapshot(void)
+{
+    // AC-12b: знімок старший за 100 мс — обидва борти без регулятора, подія один раз; оновлення — регулятор з нуля.
+    drive_ctl_t c;
+    drive_ctl_out_t o;
+    pid_set_t pid = pid_on(0.003f, 0.5f, 100000.0f, true);
+    uint32_t t = bench_armed(&c, pid, 1000);
+    o = go_pid(&c, APP_STATE_ARMED, t, DRIVE_REQ_DRIVE, 0.6f, 0.0f, pid, enc_all(60.0f, 2, t));
+    CHECK(o.left_permille < 600);
+    drive_enc_in_t frozen = enc_all(60.0f, 2, t);   // знімок більше не оновлюється
+    o = go_pid(&c, APP_STATE_ARMED, t + 100, DRIVE_REQ_NONE, 0, 0, pid, frozen);
+    CHECK(!(o.events & DRIVE_EVT_ENC_STALE));      // рівно 100 мс — ще не застарів
+    o = go_pid(&c, APP_STATE_ARMED, t + 120, DRIVE_REQ_NONE, 0, 0, pid, frozen);
+    CHECK(o.events & DRIVE_EVT_ENC_STALE);
+    CHECK(o.left_permille == 600 && o.right_permille == 600);
+    CHECK(o.pid_view[0].mode == PID_SIDE_NO_ENC && o.pid_view[1].mode == PID_SIDE_NO_ENC);
+    CHECK(!o.has_state_request);
+    o = go_pid(&c, APP_STATE_ARMED, t + 140, DRIVE_REQ_NONE, 0, 0, pid, frozen);
+    CHECK(!(o.events & DRIVE_EVT_ENC_STALE));      // подія — один раз
+    o = go_pid(&c, APP_STATE_ARMED, t + 160, DRIVE_REQ_NONE, 0, 0, pid, enc_all(60.0f, 9, t + 160));
+    CHECK(o.events & DRIVE_EVT_ENC_RESTORED);
+    CHECK(o.pid_view[0].mode == PID_SIDE_TWO);
+    CHECK(c.pid_side[0].integ <= 0.5f * 30.0f * 0.040f + 1e-5f);   // з нуля: лише один приріст
+}
+
+static void test_pid_reset_on_stops(void)
+{
+    // AC-14: будь-яка зупинка скидає регулятор; після повторного озброєння зі стіком у нейтралі — нуль.
+    drive_ctl_t c;
+    drive_ctl_out_t o;
+    pid_set_t pid = pid_on(0.003f, 0.5f, 100000.0f, true);
+    uint32_t t = bench_armed(&c, pid, 1000);
+    for (int k = 0; k < 10; k++) go_pid(&c, APP_STATE_ARMED, t + 20u * (unsigned)k, DRIVE_REQ_DRIVE, 0.6f, 0.0f, pid,
+                                        enc_all(40.0f, 2u + (unsigned)k, t + 20u * (unsigned)k));
+    CHECK(c.pid_side[0].integ > 0.0f);
+    o = go_pid(&c, APP_STATE_ARMED, t + 200, DRIVE_REQ_DISARM, 0, 0, pid, enc_all(40.0f, 20, t + 200));
+    CHECK(o.left_permille == 0 && o.out.stby == 0 && o.has_state_request);
+    CHECK(c.pid_side[0].integ == 0.0f && c.ramp_rpm[0] == 0.0f);   // у тому ж такті
+    go_pid(&c, APP_STATE_DISARMED, t + 220, DRIVE_REQ_ARM, 0, 0, pid, enc_all(0.0f, 21, t + 220));
+    o = go_pid(&c, APP_STATE_ARMED, t + 240, DRIVE_REQ_NONE, 0, 0, pid, enc_all(0.0f, 22, t + 240));
+    CHECK(o.left_permille == 0 && o.right_permille == 0);
+    // Відсічка по напрузі в ARMED під час руху: виходи вимкнено й регулятор скинуто в тому ж такті.
+    t = bench_armed(&c, pid, 5000);
+    for (int k = 0; k < 5; k++) go_pid(&c, APP_STATE_ARMED, t + 20u * (unsigned)k, DRIVE_REQ_DRIVE, 0.6f, 0.0f, pid,
+                                       enc_all(40.0f, 2u + (unsigned)k, t + 20u * (unsigned)k));
+    drive_ctl_in_t in = in_for(APP_STATE_ARMED, t + 100, snap(5000, t + 100), DRIVE_REQ_NONE, 0, 0);
+    in.pid = pid;
+    in.enc = enc_all(40.0f, 7, t + 100);
+    drive_ctl_step(&c, &in, &o);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_FAILSAFE && o.out.stby == 0);
+    CHECK(c.pid_side[0].integ == 0.0f);
+}
+
+static void test_pid_saving_blocks_arm(void)
+{
+    // AC-15: озброєння, що збіглося із записом набору, відхиляється з причиною «триває збереження набору».
+    drive_ctl_t c;
+    drive_ctl_init(&c);
+    drive_ctl_in_t in = in_for(APP_STATE_DISARMED, 1000, snap(8000, 1000), DRIVE_REQ_ARM, 0, 0);
+    in.pid_saving = true;
+    drive_ctl_out_t o;
+    drive_ctl_step(&c, &in, &o);
+    CHECK(!o.accepted && o.reason == DRIVE_REASON_PID_SAVING && !o.has_state_request);
+    char buf[160];
+    drive_reason_text(DRIVE_REASON_PID_SAVING, 0, buf, sizeof buf);
+    CHECK(strstr(buf, "триває збереження набору") != NULL);
+    CHECK(strstr(drive_block_text(DRIVE_BLOCK_PID_SAVING), "триває збереження набору") != NULL);
+    // Тумблер пульта: фронт під час збереження — відмова з причиною.
+    uint32_t t = ready_disarmed(&c, 2000);
+    in = in_for(APP_STATE_DISARMED, t, snap(8000, t), DRIVE_REQ_NONE, 0, 0);
+    in.rc = rc_raw(t, 3, NEUT, NEUT, SW_ARM);
+    in.pid_saving = true;
+    drive_ctl_step(&c, &in, &o);
+    CHECK(!o.has_state_request && (o.events & DRIVE_EVT_ARM_REFUSED) && o.arm_block == DRIVE_BLOCK_PID_SAVING);
+}
+
+static void test_pid_mode_change_reason(void)
+{
+    // Рев'ю R1 (AC-15): озброєння, що збіглося зі зміною режиму, відхиляється з власною причиною, а не «збереження».
+    char buf[160];
+    drive_reason_text(DRIVE_REASON_PID_MODE, 0, buf, sizeof buf);
+    CHECK(strstr(buf, "зміна режиму регулятора") != NULL && strstr(buf, "збереження") == NULL);
+    const char *b = drive_block_text(DRIVE_BLOCK_PID_MODE);
+    CHECK(strstr(b, "зміна режиму регулятора") != NULL && strstr(b, "збереження") == NULL);
+}
+
+static void test_pid_arm_refused(void)
+{
+    // Рев'ю S1 (AC-15): дозвіл на ARMED не отримано — запит знято, причина відповідає тому, що заважало.
+    drive_ctl_t c;
+    drive_ctl_out_t o;
+    drive_ctl_init(&c);
+    drive_ctl_in_t in = in_for(APP_STATE_DISARMED, 1000, snap(8000, 1000), DRIVE_REQ_ARM, 0, 0);
+    drive_ctl_step(&c, &in, &o);
+    CHECK(o.accepted && o.has_state_request && o.state_request == APP_STATE_ARMED);
+    drive_ctl_out_t o2 = o;
+    drive_arm_refused(&o, true, PID_BUSY_MODE);
+    CHECK(!o.has_state_request && !o.accepted && o.reason == DRIVE_REASON_PID_MODE);
+    drive_arm_refused(&o2, true, PID_BUSY_SAVE);
+    CHECK(!o2.has_state_request && !o2.accepted && o2.reason == DRIVE_REASON_PID_SAVING);
+    // Тумблер пульта: подія «озброєно» стає «відмова» з причиною.
+    uint32_t t = ready_disarmed(&c, 2000);
+    in = in_for(APP_STATE_DISARMED, t, snap(8000, t), DRIVE_REQ_NONE, 0, 0);
+    in.rc = rc_raw(t, 3, NEUT, NEUT, SW_ARM);
+    drive_ctl_step(&c, &in, &o);
+    CHECK(o.has_state_request && (o.events & DRIVE_EVT_REMOTE_ARMED));
+    o2 = o;
+    drive_arm_refused(&o, false, PID_BUSY_MODE);
+    CHECK(!o.has_state_request && !(o.events & DRIVE_EVT_REMOTE_ARMED) && (o.events & DRIVE_EVT_ARM_REFUSED));
+    CHECK(o.arm_block == DRIVE_BLOCK_PID_MODE);
+    drive_arm_refused(&o2, false, PID_BUSY_SAVE);
+    CHECK(!o2.has_state_request && (o2.events & DRIVE_EVT_ARM_REFUSED) && o2.arm_block == DRIVE_BLOCK_PID_SAVING);
+}
+
+static void test_pid_view_disarmed(void)
+{
+    // Рев'ю F2 (AC-03, AC-06, AC-12): поза ARMED показ бере режим поточного набору, а не зафіксований при озброєнні.
+    drive_ctl_t c;
+    drive_ctl_out_t o;
+    drive_ctl_init(&c);
+    pid_set_t on = pid_on(0.003f, 0.0f, 300.0f, true);
+    drive_enc_in_t e = enc_all(0.0f, 2, 1000);
+    e.avail[ENC_RL] = false;                       // лівий: лише FL
+    e.avail[ENC_FR] = false;                       // правий: жодного
+    e.avail[ENC_RR] = false;
+    // Старт зі збереженим «увімкненим» набором (AC-06), ровер ще не озброювали.
+    o = go_pid(&c, APP_STATE_DISARMED, 1000, DRIVE_REQ_NONE, 0, 0, on, e);
+    CHECK(o.pid_view[0].mode == PID_SIDE_ONE && o.pid_view[0].missing && strcmp(o.pid_view[0].missing, "RL") == 0);
+    CHECK(o.pid_view[1].mode == PID_SIDE_NO_ENC);
+    o = go_pid(&c, APP_STATE_DISARMED, 1020, DRIVE_REQ_NONE, 0, 0, on, enc_all(0.0f, 3, 1020));
+    CHECK(o.pid_view[0].mode == PID_SIDE_TWO && o.pid_view[1].mode == PID_SIDE_TWO);
+    // Озброєння з увімкненим, потім «pid off» у DISARMED — показ одразу «без регулятора».
+    go_pid(&c, APP_STATE_DISARMED, 1040, DRIVE_REQ_ARM, 0, 0, on, enc_all(0.0f, 4, 1040));
+    go_pid(&c, APP_STATE_ARMED, 1060, DRIVE_REQ_NONE, 0, 0, on, enc_all(0.0f, 5, 1060));
+    go_pid(&c, APP_STATE_DISARMED, 1080, DRIVE_REQ_NONE, 0, 0, on, enc_all(0.0f, 6, 1080));
+    pid_set_t off = pid_on(0.003f, 0.0f, 300.0f, false);
+    o = go_pid(&c, APP_STATE_DISARMED, 1100, DRIVE_REQ_NONE, 0, 0, off, enc_all(0.0f, 7, 1100));
+    CHECK(o.pid_view[0].mode == PID_SIDE_OPEN && o.pid_view[1].mode == PID_SIDE_OPEN);
+    // У ARMED діє зафіксований режим: «pid on» під час руху не змінює показ до наступного озброєння (AC-15).
+    go_pid(&c, APP_STATE_DISARMED, 1120, DRIVE_REQ_ARM, 0, 0, off, enc_all(0.0f, 8, 1120));
+    go_pid(&c, APP_STATE_ARMED, 1140, DRIVE_REQ_NONE, 0, 0, off, enc_all(0.0f, 9, 1140));   // вхід в ARMED: вимкнений
+    o = go_pid(&c, APP_STATE_ARMED, 1160, DRIVE_REQ_NONE, 0, 0, on, enc_all(0.0f, 10, 1160));
+    CHECK(o.pid_view[0].mode == PID_SIDE_OPEN);
+}
+
+// ---------- phase5-pid, рев'ю F6: регулятор на шляху пульта і при всіх зупинках (spec AC-14, AC-16, AC-18) ----------
+
+static drive_ctl_out_t go_rc_pid(drive_ctl_t *c, app_state_t st, uint32_t now, crsf_snapshot_t rc, pid_set_t pid,
+                                 drive_enc_in_t enc)
+{
+    drive_ctl_out_t o;
+    drive_ctl_in_t in = in_for(st, now, snap(8000, now), DRIVE_REQ_NONE, 0, 0);
+    in.rc = rc;
+    in.pid = pid;
+    in.enc = enc;
+    drive_ctl_step(c, &in, &o);
+    return o;
+}
+
+// Озброєння з пульта фронтом тумблера і перший такт у ARMED (фіксує режим регулятора); повертає наступну мітку.
+static uint32_t remote_armed(drive_ctl_t *c, pid_set_t pid, uint32_t t0)
+{
+    uint32_t t = ready_disarmed(c, t0);
+    drive_ctl_out_t o = go_rc_pid(c, APP_STATE_DISARMED, t, rc_raw(t, 3, NEUT, NEUT, SW_ARM), pid, enc_all(0, 1, t));
+    CHECK(o.has_state_request && o.state_request == APP_STATE_ARMED);
+    go_rc_pid(c, APP_STATE_ARMED, t + 20, rc_raw(t + 20, 4, NEUT, NEUT, SW_ARM), pid, enc_all(0, 2, t + 20));
+    return t + 40;
+}
+
+// Ровер їде з пульта стіком 1650 і накопичує складову I (швидкість 40 об/хв нижча за задану); повертає наступну мітку.
+static uint32_t remote_driving(drive_ctl_t *c, pid_set_t pid, uint32_t t0)
+{
+    uint32_t t = remote_armed(c, pid, t0);
+    for (unsigned k = 0; k < 10; k++) {
+        go_rc_pid(c, APP_STATE_ARMED, t, rc_raw(t, 10 + k, NEUT, 1650, SW_ARM), pid, enc_all(40.0f, 10 + k, t));
+        t += 20;
+    }
+    CHECK(c->pid_side[0].integ > 0.0f && c->ramp_rpm[0] > 0.0f);
+    return t;
+}
+
+static void test_pid_remote_regulated(void)
+{
+    drive_ctl_t c;
+    drive_ctl_out_t o;
+    pid_set_t pid = pid_on(0.003f, 0.0f, 100000.0f, true);
+    uint32_t t = remote_armed(&c, pid, 1000);
+    // Стік уперед: вихід — від регулятора (P за похибкою), а не вихід мікшера, як у фазі 4.
+    crsf_snapshot_t rc = rc_raw(t, 5, NEUT, 1650, SW_ARM);
+    o = go_rc_pid(&c, APP_STATE_ARMED, t, rc, pid, enc_all(60.0f, 3, t));
+    CHECK(o.pid_view[0].mode == PID_SIDE_TWO && o.pid_view[1].mode == PID_SIDE_TWO);
+    float mix = o.pid_view[0].mix;
+    CHECK(mix > 0.0f);
+    CHECK(o.pid_view[0].target_rpm == pid_target_from_mix(mix));
+    int expect = (int)(0.003f * (pid_target_from_mix(mix) - 60.0f) * 1000.0f + 0.5f);
+    CHECK(o.left_permille >= expect - 1 && o.left_permille <= expect + 1);
+    CHECK(o.left_permille < (int)(mix * 1000.0f) - 1);   // не вихід мікшера
+    CHECK(o.out.stby == 1);
+    // Стік у нейтраль: задана й вихід — нуль у тому ж такті, стан регулятора скинуто.
+    o = go_rc_pid(&c, APP_STATE_ARMED, t + 20, rc_raw(t + 20, 6, NEUT, NEUT, SW_ARM), pid, enc_all(60.0f, 4, t + 20));
+    CHECK(o.left_permille == 0 && o.right_permille == 0);
+    CHECK(c.pid_side[0].integ == 0.0f && c.ramp_rpm[0] == 0.0f);
+}
+
+static void test_pid_remote_equals_bench(void)
+{
+    // AC-16: однаковий вихід мікшера з пульта і зі стенду дає однакову задану.
+    drive_ctl_t c;
+    drive_ctl_out_t o;
+    pid_set_t pid = pid_on(0.003f, 0.0f, 100000.0f, true);
+    uint32_t t = remote_armed(&c, pid, 1000);
+    crsf_snapshot_t rc = rc_raw(t, 5, 1200, 1650, SW_ARM);
+    crsf_intent_t it;
+    crsf_intent(&rc, &it);
+    o = go_rc_pid(&c, APP_STATE_ARMED, t, rc, pid, enc_all(30.0f, 3, t));
+    float remote_l = o.pid_view[0].target_rpm, remote_r = o.pid_view[1].target_rpm;
+    t = bench_armed(&c, pid, 9000);
+    o = go_pid(&c, APP_STATE_ARMED, t, DRIVE_REQ_DRIVE, it.throttle, it.steer, pid, enc_all(30.0f, 2, t));
+    CHECK(o.accepted);
+    CHECK(o.pid_view[0].target_rpm == remote_l && o.pid_view[1].target_rpm == remote_r);
+    CHECK(remote_l != remote_r);   // з поворотом — борти різні, тож рівність не випадкова
+}
+
+static void test_pid_reset_on_remote_stops(void)
+{
+    // AC-14, AC-18: кожна зупинка фаз 1–3 скидає регулятор у тому ж такті.
+    drive_ctl_t c;
+    drive_ctl_out_t o;
+    pid_set_t pid = pid_on(0.003f, 0.5f, 100000.0f, true);
+    // Тумблер DISARM.
+    uint32_t t = remote_driving(&c, pid, 1000);
+    o = go_rc_pid(&c, APP_STATE_ARMED, t, rc_raw(t, 40, NEUT, 1650, SW_DIS), pid, enc_all(40.0f, 40, t));
+    CHECK(o.stop == DRIVE_STOP_SWITCH_DISARM && o.out.stby == 0 && o.left_permille == 0);
+    CHECK(c.pid_side[0].integ == 0.0f && c.ramp_rpm[0] == 0.0f && c.pid_side[1].integ == 0.0f);
+    // Втрата звʼязку понад 500 мс: FAILSAFE, виходи вимкнено, регулятор скинуто.
+    t = remote_driving(&c, pid, 5000);
+    uint32_t last = t - 20;
+    o = go_rc_pid(&c, APP_STATE_ARMED, last + 501, rc_raw(last, 19, NEUT, 1650, SW_ARM), pid, enc_all(40.0f, 41, last + 501));
+    CHECK(o.stop == DRIVE_STOP_LINK_LOST && o.state_request == APP_STATE_FAILSAFE && o.out.stby == 0);
+    CHECK(c.pid_side[0].integ == 0.0f && c.ramp_rpm[0] == 0.0f);
+}
+
+static void test_pid_reset_on_bench_stops(void)
+{
+    drive_ctl_t c;
+    drive_ctl_out_t o;
+    pid_set_t pid = pid_on(0.003f, 0.5f, 100000.0f, true);
+    // Спливання вікна стендової команди.
+    uint32_t t = bench_armed(&c, pid, 1000);
+    o = go_pid(&c, APP_STATE_ARMED, t, DRIVE_REQ_DRIVE, 0.6f, 0.0f, pid, enc_all(40.0f, 2, t));
+    CHECK(o.accepted);
+    uint32_t k = 1;
+    for (; 20u * k < DRIVE_WINDOW_MS; k++) {
+        o = go_pid(&c, APP_STATE_ARMED, t + 20u * k, DRIVE_REQ_NONE, 0, 0, pid, enc_all(40.0f, 2 + k, t + 20u * k));
+    }
+    CHECK(c.pid_side[0].integ > 0.0f && o.out.stby == 1);
+    o = go_pid(&c, APP_STATE_ARMED, t + DRIVE_WINDOW_MS, DRIVE_REQ_NONE, 0, 0, pid, enc_all(40.0f, 2 + k, t + DRIVE_WINDOW_MS));
+    CHECK(o.stop == DRIVE_STOP_WINDOW_EXPIRED && o.out.stby == 0 && o.left_permille == 0);
+    CHECK(c.pid_side[0].integ == 0.0f && c.ramp_rpm[0] == 0.0f);
+    // control без Task WDT: виходи вимкнені, регулятор не крокує і скинутий.
+    t = bench_armed(&c, pid, 9000);
+    go_pid(&c, APP_STATE_ARMED, t, DRIVE_REQ_DRIVE, 0.6f, 0.0f, pid, enc_all(40.0f, 2, t));
+    go_pid(&c, APP_STATE_ARMED, t + 20, DRIVE_REQ_NONE, 0, 0, pid, enc_all(40.0f, 3, t + 20));
+    CHECK(c.pid_side[0].integ > 0.0f);
+    drive_ctl_in_t in = in_for(APP_STATE_ARMED, t + 40, snap(8000, t + 40), DRIVE_REQ_NONE, 0, 0);
+    in.pid = pid;
+    in.enc = enc_all(40.0f, 4, t + 40);
+    in.outputs_inhibited = true;
+    drive_ctl_step(&c, &in, &o);
+    CHECK(o.out.stby == 0 && o.left_permille == 0 && o.right_permille == 0);
+    CHECK(c.pid_side[0].integ == 0.0f && c.ramp_rpm[0] == 0.0f);
+}
+
+static void test_pid_boards_text(void)
+{
+    // Рев'ю F8 (AC-12): журнал старту називає борт, що працює без регулятора, і недоступні колеса.
+    char buf[240];
+    bool av[ENC_WHEELS] = {true, false, false, false};   // FL — так; FR, RL, RR — ні
+    size_t len = drive_pid_boards_text(PID_MODE_ON, av, buf, sizeof buf);
+    CHECK(len == strlen(buf));
+    CHECK(strstr(buf, "лівий борт: за одним колесом (RL недоступне)") != NULL);
+    CHECK(strstr(buf, "правий борт: без регулятора — немає доступного енкодера (FR, RR)") != NULL);
+    bool all[ENC_WHEELS] = {true, true, true, true};
+    drive_pid_boards_text(PID_MODE_ON, all, buf, sizeof buf);
+    CHECK(strstr(buf, "лівий борт: за двома колесами") != NULL && strstr(buf, "правий борт: за двома колесами") != NULL);
+    drive_pid_boards_text(PID_MODE_UNCONFIGURED, all, buf, sizeof buf);
+    CHECK(strstr(buf, "лівий борт: без регулятора (регулятор не налаштований)") != NULL);
+    CHECK(strstr(buf, "правий борт: без регулятора (регулятор не налаштований)") != NULL);
+    drive_pid_boards_text(PID_MODE_OFF, av, buf, sizeof buf);
+    CHECK(strstr(buf, "правий борт: без регулятора — немає доступного енкодера (FR, RR)") != NULL);
+    CHECK(strstr(buf, "лівий борт: без регулятора (регулятор вимкнений)") != NULL);
+}
+
 int main(void)
 {
+    test_pid_boards_text();
+    test_pid_remote_regulated();
+    test_pid_remote_equals_bench();
+    test_pid_reset_on_remote_stops();
+    test_pid_reset_on_bench_stops();
+    test_pid_view_disarmed();
+    test_pid_bench_regulated();
+    test_pid_off_is_phase4();
+    test_pid_mode_latched();
+    test_pid_ramp_in_step();
+    test_pid_encoder_availability();
+    test_pid_stale_snapshot();
+    test_pid_reset_on_stops();
+    test_pid_saving_blocks_arm();
+    test_pid_mode_change_reason();
+    test_pid_arm_refused();
     test_mix();
     test_outputs_from();
     test_cap();
