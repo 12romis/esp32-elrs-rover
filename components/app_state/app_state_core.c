@@ -4,7 +4,8 @@
 
 #include "app_state.h"
 
-// Таблиця дозволених переходів [з][у]: рівно 11 пар із 49 (фаза 0: 10; фаза 3: + FAILSAFE → DISARMED, ADR-0002).
+// Таблиця дозволених переходів [з][у]: рівно 12 пар із 49 (фаза 0: 10; фаза 3: + FAILSAFE → DISARMED, ADR-0002;
+// фаза 6: + OBSTACLE_HOLD → DISARMED, ADR-0004 phase6-tof: роззброєння з утримання за один перехід).
 // Переходу в той самий стан у таблиці немає; зі стану FAULT виходів немає. Пара FAILSAFE → DISARMED у таблиці
 // дозволена, але app_sm_request додатково охороняє її причиною: вихід можливий лише після втрати зв'язку.
 static const bool k_allowed[APP_STATE_COUNT][APP_STATE_COUNT] = {
@@ -13,7 +14,7 @@ static const bool k_allowed[APP_STATE_COUNT][APP_STATE_COUNT] = {
     [APP_STATE_DISARMED]      = {[APP_STATE_ARMED] = true, [APP_STATE_FAILSAFE] = true},
     [APP_STATE_ARMED]         = {[APP_STATE_DISARMED] = true, [APP_STATE_OBSTACLE_HOLD] = true,
                                  [APP_STATE_FAILSAFE] = true},
-    [APP_STATE_OBSTACLE_HOLD] = {[APP_STATE_ARMED] = true, [APP_STATE_FAILSAFE] = true},
+    [APP_STATE_OBSTACLE_HOLD] = {[APP_STATE_ARMED] = true, [APP_STATE_DISARMED] = true, [APP_STATE_FAILSAFE] = true},
     [APP_STATE_FAILSAFE]      = {[APP_STATE_DISARMED] = true},
 };
 
@@ -30,6 +31,11 @@ const char *app_state_name(app_state_t s)
     case APP_STATE_COUNT:         break;
     }
     return "?";
+}
+
+bool app_state_is_driving(app_state_t s)
+{
+    return s == APP_STATE_ARMED || s == APP_STATE_OBSTACLE_HOLD;
 }
 
 bool app_sm_is_allowed(app_state_t from, app_state_t to)

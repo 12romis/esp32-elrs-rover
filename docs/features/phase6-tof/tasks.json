@@ -64,7 +64,7 @@
         "docs/02-FIRMWARE-CONTEXT.md"
       ],
       "file": "docs/features/phase6-tof/tasks/t3-app-state-driving-predicate.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T4",
