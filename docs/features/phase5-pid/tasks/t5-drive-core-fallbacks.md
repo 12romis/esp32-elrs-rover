@@ -4,14 +4,16 @@ title: "Додати в drive_ctl_step відкати і зупинки: нед�
 layer: "app"
 deps: ["T4"]
 blocks: ["T8"]
-acs: ["AC-12", "AC-12b", "AC-14", "AC-15"]
+acs: ["AC-12", "AC-12b", "AC-15"]
 files_hint: ["components/drive/drive_core.c", "components/drive/include/drive_core.h", "test/host/test_drive.c"]
 owner: "Агент (код); Розробник (приймання на залізі)"
 estimate: "M"
 context_budget: "M"
-status: "todo"
-step: ""
+status: "done"
+step: "GATE ✓ — без коміту (рішення Розробника)"
 ---
+
+> **Рев'ю 2026-10-20, F5 (T11):** апаратні AC (AC-14) прибрано з `acs` цієї задачі. Вони приймаються на залізі в T10 (spec AC-20); блоки AC нижче лишаються як контекст для хостової логіки.
 
 <!-- To the executing agent: work from what is inlined here. If a slice is insufficient, ambiguous, or contradicts the code in front of you, open the named file for the full text and follow that. Do not invent the missing part. -->
 

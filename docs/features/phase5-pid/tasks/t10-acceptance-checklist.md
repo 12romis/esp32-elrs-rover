@@ -4,13 +4,13 @@ title: "Написати acceptance.md: процедура приймання ф
 layer: "docs"
 deps: ["T8"]
 blocks: []
-acs: ["AC-01", "AC-02", "AC-10", "AC-13", "AC-14", "AC-20"]
+acs: ["AC-01", "AC-02", "AC-05", "AC-06", "AC-10", "AC-13", "AC-14", "AC-20"]
 files_hint: ["docs/features/phase5-pid/acceptance.md"]
 owner: "Агент (код); Розробник (приймання на залізі)"
 estimate: "S"
 context_budget: "M"
-status: "todo"
-step: ""
+status: "review"
+step: "REVIEW — гейт ✓; чекає приймання Розробника на залізі (spec AC-20)"
 ---
 
 <!-- To the executing agent: work from what is inlined here. If a slice is insufficient, ambiguous, or contradicts the code in front of you, open the named file for the full text and follow that. Do not invent the missing part. -->

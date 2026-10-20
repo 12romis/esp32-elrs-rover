@@ -4,14 +4,16 @@ title: "Додати в pid_core крок регулятора: задана з 
 layer: "domain"
 deps: ["T1"]
 blocks: ["T3", "T4"]
-acs: ["AC-01", "AC-09", "AC-10", "AC-13", "AC-18"]
+acs: ["AC-09", "AC-18"]
 files_hint: ["components/pid/pid_core.c", "components/pid/include/pid_core.h", "test/host/test_pid.c"]
 owner: "Агент (код); Розробник (приймання на залізі)"
 estimate: "M"
 context_budget: "M"
-status: "todo"
-step: ""
+status: "done"
+step: "GATE ✓ — без коміту (рішення Розробника)"
 ---
+
+> **Рев'ю 2026-10-20, F5 (T11):** апаратні AC (AC-01, AC-10, AC-13) прибрано з `acs` цієї задачі. Вони приймаються на залізі в T10 (spec AC-20); блоки AC нижче лишаються як контекст для хостової логіки.
 
 <!-- To the executing agent: work from what is inlined here. If a slice is insufficient, ambiguous, or contradicts the code in front of you, open the named file for the full text and follow that. Do not invent the missing part. -->
 

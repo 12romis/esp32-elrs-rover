@@ -4,14 +4,16 @@ title: "Додати в pid_core кадр трасування і тексти: 
 layer: "domain"
 deps: ["T2"]
 blocks: ["T4", "T7"]
-acs: ["AC-03", "AC-05", "AC-18"]
+acs: ["AC-03", "AC-18"]
 files_hint: ["components/pid/pid_core.c", "components/pid/include/pid_core.h", "test/host/test_pid.c"]
 owner: "Агент (код); Розробник (приймання на залізі)"
 estimate: "S"
 context_budget: "M"
-status: "todo"
-step: ""
+status: "done"
+step: "GATE ✓ — без коміту (рішення Розробника)"
 ---
+
+> **Рев'ю 2026-10-20, F5 (T11):** апаратні AC (AC-05) прибрано з `acs` цієї задачі. Вони приймаються на залізі в T10 (spec AC-20); блоки AC нижче лишаються як контекст для хостової логіки.
 
 <!-- To the executing agent: work from what is inlined here. If a slice is insufficient, ambiguous, or contradicts the code in front of you, open the named file for the full text and follow that. Do not invent the missing part. -->
 

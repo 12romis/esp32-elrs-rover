@@ -9,8 +9,8 @@ files_hint: ["components/pid/pid_hal.c", "components/pid/include/pid_hal.h", "co
 owner: "Агент (код); Розробник (приймання на залізі)"
 estimate: "M"
 context_budget: "M"
-status: "todo"
-step: ""
+status: "review"
+step: "REVIEW — гейт ✓; чекає приймання Розробника на залізі (spec AC-20)"
 ---
 
 <!-- To the executing agent: work from what is inlined here. If a slice is insufficient, ambiguous, or contradicts the code in front of you, open the named file for the full text and follow that. Do not invent the missing part. -->

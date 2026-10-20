@@ -19,7 +19,7 @@
         "test/host/test_pid.c"
       ],
       "file": "docs/features/phase5-pid/tasks/t1-pid-core-set-record.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T2",
@@ -29,10 +29,7 @@
         "T1"
       ],
       "acs": [
-        "AC-01",
         "AC-09",
-        "AC-10",
-        "AC-13",
         "AC-18"
       ],
       "dod": "`test/host/run_tests.sh` зелений з тестами кроку, розгону й насичення; `check_core_headers.sh` чистий; `idf.py build` без помилок і нових попереджень",
@@ -42,7 +39,7 @@
         "test/host/test_pid.c"
       ],
       "file": "docs/features/phase5-pid/tasks/t2-pid-core-step.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T3",
@@ -53,7 +50,6 @@
       ],
       "acs": [
         "AC-03",
-        "AC-05",
         "AC-18"
       ],
       "dod": "`test/host/run_tests.sh` зелений з тестами формату; `idf.py build` без помилок і нових попереджень",
@@ -63,7 +59,7 @@
         "test/host/test_pid.c"
       ],
       "file": "docs/features/phase5-pid/tasks/t3-pid-core-text.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T4",
@@ -74,8 +70,6 @@
         "T3"
       ],
       "acs": [
-        "AC-02",
-        "AC-13",
         "AC-16"
       ],
       "dod": "`test/host/run_tests.sh` зелений (наявні тести фаз 1–4 без змін у поведінці); `idf.py build` без помилок і нових попереджень",
@@ -86,7 +80,7 @@
         "test/host/test_drive.c"
       ],
       "file": "docs/features/phase5-pid/tasks/t4-drive-core-regulate.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T5",
@@ -98,7 +92,6 @@
       "acs": [
         "AC-12",
         "AC-12b",
-        "AC-14",
         "AC-15"
       ],
       "dod": "`test/host/run_tests.sh` зелений з тестами кожної гілки; `idf.py build` без помилок і нових попереджень",
@@ -108,7 +101,7 @@
         "test/host/test_drive.c"
       ],
       "file": "docs/features/phase5-pid/tasks/t5-drive-core-fallbacks.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T6",
@@ -129,7 +122,7 @@
         "test/host/test_console.c"
       ],
       "file": "docs/features/phase5-pid/tasks/t6-console-pid-command.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T7",
@@ -152,7 +145,7 @@
         "components/pid/CMakeLists.txt"
       ],
       "file": "docs/features/phase5-pid/tasks/t7-pid-hal-store-trace.md",
-      "status": "todo"
+      "status": "review"
     },
     {
       "id": "T8",
@@ -175,7 +168,7 @@
         "main/main.c"
       ],
       "file": "docs/features/phase5-pid/tasks/t8-wire-control-main.md",
-      "status": "todo"
+      "status": "review"
     },
     {
       "id": "T9",
@@ -195,7 +188,7 @@
         "test/host/README.md"
       ],
       "file": "docs/features/phase5-pid/tasks/t9-host-guardrails.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T10",
@@ -207,6 +200,8 @@
       "acs": [
         "AC-01",
         "AC-02",
+        "AC-05",
+        "AC-06",
         "AC-10",
         "AC-13",
         "AC-14",
@@ -217,7 +212,253 @@
         "docs/features/phase5-pid/acceptance.md"
       ],
       "file": "docs/features/phase5-pid/tasks/t10-acceptance-checklist.md",
-      "status": "todo"
+      "status": "review"
+    },
+    {
+      "id": "T11",
+      "title": "Прибрати апаратні AC із задач T2–T5 і узгодити acceptance.md (review F5)",
+      "layer": "docs",
+      "deps": [],
+      "acs": [
+        "AC-20"
+      ],
+      "dod": "у `tasks.json` і `tasks/t2…t5` немає AC-01, AC-02, AC-05, AC-10, AC-13, AC-14; вони лишаються в T10; `acceptance.md` узгоджено",
+      "files_hint": [
+        "docs/features/phase5-pid/tasks.json",
+        "docs/features/phase5-pid/tasks/",
+        "docs/features/phase5-pid/acceptance.md"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t11-review-hw-acs.md",
+      "status": "done"
+    },
+    {
+      "id": "T12",
+      "title": "Показ режиму бортів поза ARMED — з поточного набору, а не із зафіксованого режиму (review F2)",
+      "layer": "app",
+      "deps": [],
+      "acs": [
+        "AC-03",
+        "AC-12"
+      ],
+      "dod": "`run_tests.sh` зелений з тестом показу в DISARMED; `idf.py build` без помилок і нових попереджень",
+      "files_hint": [
+        "components/drive/drive_core.c",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t12-review-side-view-disarmed.md",
+      "status": "done"
+    },
+    {
+      "id": "T13",
+      "title": "Винести в pid_core завершення збереження, причину відкинутого запису і збій читання (review F3, F4, F9)",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-07",
+        "AC-08"
+      ],
+      "dod": "`run_tests.sh` зелений з тестами збою запису, показу відкинутого запису і збою читання; `check_core_headers.sh` чистий; `idf.py build` без попереджень",
+      "files_hint": [
+        "components/pid/pid_core.c",
+        "components/pid/include/pid_core.h",
+        "components/pid/pid_hal.c",
+        "test/host/test_pid.c"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t13-review-save-load-core.md",
+      "status": "done"
+    },
+    {
+      "id": "T14",
+      "title": "Зробити атомарними вхід в ARMED і початок збереження набору (review F1)",
+      "layer": "infra",
+      "deps": [
+        "T13"
+      ],
+      "acs": [
+        "AC-15"
+      ],
+      "dod": "`run_tests.sh` зелений з тестом протоколу ознак; `idf.py build` без попереджень; гонка закрита оглядом коду",
+      "files_hint": [
+        "components/pid/pid_core.c",
+        "components/pid/include/pid_core.h",
+        "components/pid/pid_hal.c",
+        "components/pid/include/pid_hal.h",
+        "components/drive/drive_hal.c",
+        "test/host/test_pid.c"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t14-review-arm-save-atomic.md",
+      "status": "done"
+    },
+    {
+      "id": "T15",
+      "title": "Хостові тести регулятора на шляху пульта і при всіх зупинках (review F6)",
+      "layer": "tests",
+      "deps": [
+        "T12"
+      ],
+      "acs": [
+        "AC-16",
+        "AC-18"
+      ],
+      "dod": "`run_tests.sh` зелений з тестами: стік → регульований вихід, нейтраль → 0, тумблер DISARM, втрата звʼязку, кінець вікна, outputs_inhibited, «пульт = стенд»",
+      "files_hint": [
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t15-review-remote-stop-tests.md",
+      "status": "done"
+    },
+    {
+      "id": "T16",
+      "title": "Рядок журналу старту з режимом бортів (review F8)",
+      "layer": "wiring",
+      "deps": [
+        "T12"
+      ],
+      "acs": [
+        "AC-12"
+      ],
+      "dod": "`run_tests.sh` зелений з тестом тексту; `idf.py build` без попереджень",
+      "files_hint": [
+        "components/drive/drive_core.c",
+        "components/drive/include/drive_core.h",
+        "main/main.c",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t16-review-boot-side-log.md",
+      "status": "done"
+    },
+    {
+      "id": "T17",
+      "title": "Прибрати апаратні AC із T12 і T15, додати AC-05 і AC-06 у T10, оновити acceptance.md (review N1)",
+      "layer": "docs",
+      "deps": [],
+      "acs": [
+        "AC-20"
+      ],
+      "dod": "У `acs` done-задач немає AC-01, -02, -05, -06, -10, -13, -14; `acs` T10 містить AC-05 і AC-06; `acceptance.md` узгоджений з `tasks.json`",
+      "files_hint": [
+        "docs/features/phase5-pid/tasks.json",
+        "docs/features/phase5-pid/tasks/t10-acceptance-checklist.md",
+        "docs/features/phase5-pid/tasks/t12-review-side-view-disarmed.md",
+        "docs/features/phase5-pid/tasks/t15-review-remote-stop-tests.md",
+        "docs/features/phase5-pid/acceptance.md"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t17-review-hw-acs-2.md",
+      "status": "done"
+    },
+    {
+      "id": "T18",
+      "title": "Розділити завершення збереження на позначку й текст; збій сховища знімає «збережено» (review N2)",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-08"
+      ],
+      "dod": "`run_tests.sh` зелений з тестом збою сховища при стартовому `saved=true`; `check_core_headers.sh` чистий; `idf.py build` без попереджень",
+      "files_hint": [
+        "components/pid/pid_core.c",
+        "components/pid/include/pid_core.h",
+        "test/host/test_pid.c"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t18-review-save-fail-unsaved.md",
+      "status": "done"
+    },
+    {
+      "id": "T19",
+      "title": "Форматувати відповідь збереження поза критичною секцією (review N3)",
+      "layer": "infra",
+      "deps": [
+        "T18"
+      ],
+      "acs": [
+        "AC-08"
+      ],
+      "dod": "Під `s_mux` у `pid_hal_save` немає `snprintf`; `idf.py build` без попереджень; огляд коду",
+      "files_hint": [
+        "components/pid/pid_hal.c"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t19-review-save-text-outside-mux.md",
+      "status": "done"
+    },
+    {
+      "id": "T20",
+      "title": "Зміна режиму pid on/off атомарна з входом в ARMED (review N4)",
+      "layer": "infra",
+      "deps": [
+        "T19"
+      ],
+      "acs": [
+        "AC-15"
+      ],
+      "dod": "`run_tests.sh` зелений з тестом відмови зміни режиму поза DISARMED; `idf.py build` без попереджень; гонка закрита оглядом коду",
+      "files_hint": [
+        "components/pid/pid_core.c",
+        "components/pid/include/pid_core.h",
+        "components/pid/pid_hal.c",
+        "test/host/test_pid.c"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t20-review-mode-arm-atomic.md",
+      "status": "done"
+    },
+    {
+      "id": "T21",
+      "title": "Окрема ознака зміни режиму і своя причина відмови озброєння; актуальні коментарі заголовків (review R1)",
+      "layer": "infra",
+      "deps": [],
+      "acs": [
+        "AC-15"
+      ],
+      "dod": "`run_tests.sh` зелений з тестами ознаки зміни режиму і текстів причини; `idf.py build` без попереджень; огляд коду HAL",
+      "files_hint": [
+        "components/pid/pid_core.c",
+        "components/pid/include/pid_core.h",
+        "components/pid/pid_hal.c",
+        "components/pid/include/pid_hal.h",
+        "components/drive/drive_core.c",
+        "components/drive/include/drive_core.h",
+        "components/drive/drive_hal.c",
+        "test/host/test_pid.c",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t21-review-mode-flag-reason.md",
+      "status": "done"
+    },
+    {
+      "id": "T22",
+      "title": "Винести відмову озброєння за ознакою регулятора в drive_core (review S1)",
+      "layer": "app",
+      "deps": [],
+      "acs": [
+        "AC-15"
+      ],
+      "dod": "`run_tests.sh` зелений з тестом `drive_arm_refused` на обидві причини × консоль/пульт; `idf.py build` без попереджень",
+      "files_hint": [
+        "components/drive/drive_core.c",
+        "components/drive/include/drive_core.h",
+        "components/drive/drive_hal.c",
+        "test/host/test_drive.c"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t22-review-arm-refused-core.md",
+      "status": "done"
+    },
+    {
+      "id": "T23",
+      "title": "Коментарі взаємного виключення і розмір образу в acceptance.md (review S2)",
+      "layer": "docs",
+      "deps": [
+        "T22"
+      ],
+      "acs": [
+        "AC-15"
+      ],
+      "dod": "Коментарі `pid_hal.c` і `pid_core.c` згадують зміну режиму; розмір образу в `acceptance.md` збігається зі збіркою",
+      "files_hint": [
+        "components/pid/pid_hal.c",
+        "components/pid/pid_core.c",
+        "docs/features/phase5-pid/acceptance.md"
+      ],
+      "file": "docs/features/phase5-pid/tasks/t23-review-comments-image-size.md",
+      "status": "done"
     }
   ]
 }

@@ -4,14 +4,16 @@ title: "Вбудувати регулятор у drive_ctl_step: задана щ
 layer: "app"
 deps: ["T2", "T3"]
 blocks: ["T5"]
-acs: ["AC-02", "AC-13", "AC-16"]
+acs: ["AC-16"]
 files_hint: ["components/drive/drive_core.c", "components/drive/include/drive_core.h", "components/drive/CMakeLists.txt", "test/host/test_drive.c"]
 owner: "Агент (код); Розробник (приймання на залізі)"
 estimate: "M"
 context_budget: "M"
-status: "todo"
-step: ""
+status: "done"
+step: "GATE ✓ — без коміту (рішення Розробника)"
 ---
+
+> **Рев'ю 2026-10-20, F5 (T11):** апаратні AC (AC-02, AC-13) прибрано з `acs` цієї задачі. Вони приймаються на залізі в T10 (spec AC-20); блоки AC нижче лишаються як контекст для хостової логіки.
 
 <!-- To the executing agent: work from what is inlined here. If a slice is insufficient, ambiguous, or contradicts the code in front of you, open the named file for the full text and follow that. Do not invent the missing part. -->
 
