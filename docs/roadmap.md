@@ -57,7 +57,7 @@ updated_at: "2026-10-20"
 | 3 | `phase3-crsf` — стіки пульта рухають мотори, вимкнення пульта зупиняє за 500 мс | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 3 — ELRS / CRSF» | S | shipped — [spec](features/phase3-crsf/spec.md) |
 | 4 | `phase4-encoders` — чотири лічильники дають стабільні оберти зі знаком і без зривів | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 4 — енкодери» | S | shipped — [spec](features/phase4-encoders/spec.md) |
 | 5 | `phase5-pid` — борт тримає задану швидкість під навантаженням, коефіцієнти міняються з консолі | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 5 — PID» | S | shipped — [spec](features/phase5-pid/spec.md) |
-| 6 | `phase6-tof` — ровер зупиняється перед перешкодою, дозволяє здати назад, переживає відмову сенсора | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 6 — далекоміри й протизіткнення» | L | idea |
+| 6 | `phase6-tof` — ровер зупиняється перед перешкодою, дозволяє здати назад, переживає відмову сенсора | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 6 — далекоміри й протизіткнення» | S | spec'd — [spec](features/phase6-tof/spec.md) |
 | 7 | `phase7-telemetry` — пульт бачить напругу батареї, є README, блок-схема й заповнений чекліст | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 7 — телеметрія, інтеграція, документація» | S | idea |
 
 ## Not yet specified
