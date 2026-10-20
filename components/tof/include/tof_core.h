@@ -99,5 +99,20 @@ void tof_core_resume(tof_core_t *c, uint32_t now_ms);
 
 void tof_core_view(const tof_core_t *c, tof_view_t *v);
 
+// Обмеження руху (ADR-0001, spec «Поведінка захисту»): ліве/праве → тяга = (л + п)/2 і поворот = (л − п)/2; тяга вперед
+// обрізається знизу нулем, коли передній сектор зайнятий, назад — зверху нулем, коли зайнятий задній; поворот без змін.
+// Найбільший модуль борту не зростає. Якщо жоден сектор не зайнятий, значення повертаються точно без змін.
+void tof_limit_sides(float left, float right, bool front_occupied, bool rear_occupied, float *left_out, float *right_out);
+
+// Ім'я датчика на платі: «U7», «U8», «U9», «U10».
+const char *tof_sensor_name(tof_id_t id);
+
+// Показ для консолі `tof`: датчики (місце, стан, відстань), сектори (відстань, зайнятий/вільний/не охороняється), поріг,
+// режим захисту. valid == false → «ініціалізація»; stale → «знімок застарів». Повертає довжину, завжди завершує нулем.
+size_t tof_fmt_show(char *buf, size_t n, const tof_view_t *v, bool stale);
+
+// Рядок входу в утримання: сектор, відстань, датчик, поріг.
+size_t tof_fmt_hold_line(char *buf, size_t n, tof_sector_t sector, uint16_t mm, int nearest);
+
 // Датчик належить сектору: передній — три передні, задній — U10.
 tof_sector_t tof_sector_of(tof_id_t id);

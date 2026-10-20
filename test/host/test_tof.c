@@ -298,6 +298,135 @@ static void test_init_state_not_failed(void)
     CHECK(!v.protection);
 }
 
+// ───────── T2: обмеження тяги і тексти ─────────
+static float absf(float x)
+{
+    return x < 0 ? -x : x;
+}
+
+static float maxf(float a, float b)
+{
+    return a > b ? a : b;
+}
+
+static bool near_f(float a, float b)
+{
+    return absf(a - b) < 1e-5f;
+}
+
+static void test_limit_front(void)
+{
+    float l, r;
+    tof_limit_sides(0.5f, 0.5f, true, false, &l, &r);
+    CHECK(near_f(l, 0) && near_f(r, 0));                    // уперед заборонено
+    tof_limit_sides(0.3f, -0.3f, true, false, &l, &r);
+    CHECK(near_f(l, 0.3f) && near_f(r, -0.3f));             // чистий поворот не чіпаємо
+    tof_limit_sides(1.0f, 0.2f, true, false, &l, &r);
+    CHECK(near_f(l, 0.4f) && near_f(r, -0.4f));             // тяга 0.6 → 0, поворот 0.4 лишається
+    tof_limit_sides(-0.5f, -0.5f, true, false, &l, &r);
+    CHECK(near_f(l, -0.5f) && near_f(r, -0.5f));            // назад дозволено, коли зайнятий лише передній
+}
+
+static void test_limit_rear(void)
+{
+    float l, r;
+    tof_limit_sides(-0.5f, -0.5f, false, true, &l, &r);
+    CHECK(near_f(l, 0) && near_f(r, 0));
+    tof_limit_sides(0.5f, 0.5f, false, true, &l, &r);
+    CHECK(near_f(l, 0.5f) && near_f(r, 0.5f));              // уперед дозволено
+    tof_limit_sides(-1.0f, -0.2f, false, true, &l, &r);
+    CHECK(near_f(l, -0.4f) && near_f(r, 0.4f));
+}
+
+static void test_limit_both_and_none(void)
+{
+    float l, r;
+    tof_limit_sides(0.5f, 0.5f, true, true, &l, &r);
+    CHECK(near_f(l, 0) && near_f(r, 0));
+    tof_limit_sides(-0.5f, -0.5f, true, true, &l, &r);
+    CHECK(near_f(l, 0) && near_f(r, 0));
+    tof_limit_sides(0.4f, -0.4f, true, true, &l, &r);
+    CHECK(near_f(l, 0.4f) && near_f(r, -0.4f));             // поворот на місці працює
+    tof_limit_sides(0.7f, 0.1f, false, false, &l, &r);
+    CHECK(l == 0.7f && r == 0.1f);                          // жоден не зайнятий: без змін, точно
+}
+
+static void test_limit_never_exceeds(void)
+{
+    for (int a = -10; a <= 10; a++) {
+        for (int b = -10; b <= 10; b++) {
+            for (int m = 0; m < 4; m++) {
+                float l = a / 10.0f, r = b / 10.0f, lo, ro;
+                tof_limit_sides(l, r, m & 1, m & 2, &lo, &ro);
+                float in_max = maxf(absf(l), absf(r)), out_max = maxf(absf(lo), absf(ro));
+                CHECK(out_max <= in_max + 1e-5f);           // найбільший модуль борту не зростає, ≤ 1
+                CHECK(out_max <= 1.0f + 1e-5f);
+                if (m & 1) CHECK((lo + ro) / 2 <= 1e-5f || (l + r) / 2 <= 0);   // тяга вперед обрізана
+                if (m & 2) CHECK((lo + ro) / 2 >= -1e-5f || (l + r) / 2 >= 0);  // тяга назад обрізана
+                CHECK(near_f((lo - ro) / 2, (l - r) / 2));  // поворот не змінюється
+            }
+        }
+    }
+}
+
+static void test_show_text(void)
+{
+    tof_core_t c = started();
+    tof_events_t ev = {0};
+    tof_view_t v;
+    char buf[600];
+    uint32_t t = 0;
+    uint16_t m[TOF_SENSORS] = {412, 150, 8190, 0xFFFF};
+    for (int i = 0; i < 3; i++) {
+        t += 50;
+        cycle(&c, t, m);
+    }
+    tof_core_mark_failed(&c, TOF_REAR, &ev);
+    tof_core_view(&c, &v);
+    v.valid = true;
+    size_t n = tof_fmt_show(buf, sizeof(buf), &v, false);
+    CHECK(n > 0 && n < sizeof(buf) && n == strlen(buf));
+    CHECK(strstr(buf, "170") != NULL);                       // поріг
+    CHECK(strstr(buf, "412") != NULL);
+    CHECK(strstr(buf, "150") != NULL);
+    CHECK(strstr(buf, "поза діапазоном") != NULL);
+    CHECK(strstr(buf, "відмова") != NULL);
+    CHECK(strstr(buf, "зайнятий") != NULL);                  // передній сектор: 150 < 170
+    CHECK(strstr(buf, "не охороняється") != NULL);           // задній без справних датчиків
+    CHECK(strstr(buf, "8190") == NULL);                      // сире число «поза діапазоном» не друкується
+}
+
+static void test_show_text_edge(void)
+{
+    tof_view_t v;
+    char buf[600];
+    memset(&v, 0, sizeof(v));
+    size_t n = tof_fmt_show(buf, sizeof(buf), &v, false);    // знімок не отримано
+    CHECK(n > 0 && strstr(buf, "ініціалізація") != NULL);
+    v.valid = true;
+    n = tof_fmt_show(buf, sizeof(buf), &v, true);            // застарілий
+    CHECK(strstr(buf, "застарів") != NULL);
+    char tiny[16];
+    n = tof_fmt_show(tiny, sizeof(tiny), &v, false);         // малий буфер: обрізано, завершено нулем
+    CHECK(n < sizeof(tiny) && strlen(tiny) == n);
+    CHECK(tof_fmt_show(NULL, 0, &v, false) == 0);
+}
+
+static void test_hold_line(void)
+{
+    char buf[200];
+    size_t n = tof_fmt_hold_line(buf, sizeof(buf), TOF_SECTOR_FRONT, 150, TOF_FRONT);
+    CHECK(n > 0 && n == strlen(buf));
+    CHECK(strstr(buf, "перед") != NULL);                     // «передній»
+    CHECK(strstr(buf, "150") != NULL);
+    CHECK(strstr(buf, "170") != NULL);                       // поріг
+    CHECK(strstr(buf, "U8") != NULL);
+    n = tof_fmt_hold_line(buf, sizeof(buf), TOF_SECTOR_REAR, 90, TOF_REAR);
+    CHECK(strstr(buf, "задн") != NULL && strstr(buf, "U10") != NULL);
+    CHECK(strcmp(tof_sensor_name(TOF_LEFT_FRONT), "U7") == 0);
+    CHECK(strcmp(tof_sensor_name(TOF_RIGHT_FRONT), "U9") == 0);
+}
+
 int main(void)
 {
     test_constants();
@@ -312,5 +441,12 @@ int main(void)
     test_sector_without_working_sensors();
     test_restore_and_resume();
     test_init_state_not_failed();
+    test_limit_front();
+    test_limit_rear();
+    test_limit_both_and_none();
+    test_limit_never_exceeds();
+    test_show_text();
+    test_show_text_edge();
+    test_hold_line();
     return test_summary();
 }

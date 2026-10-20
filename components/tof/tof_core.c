@@ -1,6 +1,7 @@
 // Чиста логіка далекомірів (phase6-tof, ADR-0001, ADR-0003): без заголовків ESP-IDF, перевіряється на хості.
 #include "tof_core.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "tof_calib.h"
@@ -167,4 +168,103 @@ void tof_core_view(const tof_core_t *c, tof_view_t *v)
         v->sector[k].occupied = guarded && c->sec[k].occupied;
         v->protection = v->protection || guarded;
     }
+}
+
+// ───────── обмеження руху ─────────
+
+void tof_limit_sides(float left, float right, bool front_occupied, bool rear_occupied, float *left_out, float *right_out)
+{
+    float thrust = (left + right) / 2.0f;
+    float turn = (left - right) / 2.0f;
+    bool clamp = (front_occupied && thrust > 0.0f) || (rear_occupied && thrust < 0.0f);
+    if (!clamp) {
+        *left_out = left;
+        *right_out = right;
+        return;
+    }
+    *left_out = turn;      // тяга обнулена, лишився лише поворот
+    *right_out = -turn;
+}
+
+// ───────── тексти ─────────
+
+static const char *k_sensor_names[TOF_SENSORS] = {"U7", "U8", "U9", "U10"};
+static const char *k_place[TOF_SENSORS] = {"ліворуч-вперед", "вперед", "праворуч-вперед", "назад"};
+
+const char *tof_sensor_name(tof_id_t id)
+{
+    return (unsigned)id < TOF_SENSORS ? k_sensor_names[id] : "?";
+}
+
+static void append(char *buf, size_t n, size_t *pos, const char *fmt, ...) __attribute__((format(printf, 4, 5)));
+
+#include <stdarg.h>
+static void append(char *buf, size_t n, size_t *pos, const char *fmt, ...)
+{
+    if (*pos + 1 >= n) {
+        return;
+    }
+    va_list ap;
+    va_start(ap, fmt);
+    int w = vsnprintf(buf + *pos, n - *pos, fmt, ap);
+    va_end(ap);
+    if (w < 0) {
+        buf[*pos] = '\0';
+    } else if ((size_t)w >= n - *pos) {
+        *pos = n - 1;       // обрізано
+    } else {
+        *pos += (size_t)w;
+    }
+}
+
+size_t tof_fmt_show(char *buf, size_t n, const tof_view_t *v, bool stale)
+{
+    if (buf == NULL || n == 0) {
+        return 0;
+    }
+    buf[0] = '\0';
+    size_t pos = 0;
+    if (v == NULL || !v->valid) {
+        append(buf, n, &pos, "далекоміри: ініціалізація, захист поки вимкнено (поріг перешкоди %d мм)", TOF_OBSTACLE_MM);
+        return pos;
+    }
+    append(buf, n, &pos, "далекоміри (поріг перешкоди %d мм, захист: %s)", TOF_OBSTACLE_MM,
+           stale ? "вимкнено, знімок застарів" : (v->protection ? "діє" : "вимкнено, жоден далекомір не працює"));
+    for (int i = 0; i < TOF_SENSORS; i++) {
+        append(buf, n, &pos, "\n  %s (%s): ", tof_sensor_name((tof_id_t)i), k_place[i]);
+        switch (v->sensor[i].state) {
+        case TOF_S_OK: append(buf, n, &pos, "працює, %u мм", (unsigned)v->sensor[i].mm); break;
+        case TOF_S_OUT: append(buf, n, &pos, "працює, поза діапазоном"); break;
+        case TOF_S_NOT_READY: append(buf, n, &pos, "запускається, відстані ще немає"); break;
+        case TOF_S_FAILED: append(buf, n, &pos, "відмова"); break;
+        case TOF_S_INIT: default: append(buf, n, &pos, "ініціалізація"); break;
+        }
+    }
+    static const char *const names[TOF_SECTORS] = {"передній", "задній"};
+    for (int k = 0; k < TOF_SECTORS; k++) {
+        const tof_view_sector_t *s = &v->sector[k];
+        append(buf, n, &pos, "\n  сектор %s: ", names[k]);
+        if (!s->guarded) {
+            append(buf, n, &pos, "не охороняється");
+        } else if (s->nearest < 0) {
+            append(buf, n, &pos, "%s, поза діапазоном", s->occupied ? "зайнятий" : "вільний");
+        } else {
+            append(buf, n, &pos, "%s, %u мм (%s)", s->occupied ? "зайнятий" : "вільний", (unsigned)s->mm,
+                   tof_sensor_name((tof_id_t)s->nearest));
+        }
+    }
+    return pos;
+}
+
+size_t tof_fmt_hold_line(char *buf, size_t n, tof_sector_t sector, uint16_t mm, int nearest)
+{
+    if (buf == NULL || n == 0) {
+        return 0;
+    }
+    buf[0] = '\0';
+    size_t pos = 0;
+    append(buf, n, &pos, "ровер зупинено перед перешкодою: %s сектор %u мм (%s), поріг %d мм",
+           sector == TOF_SECTOR_FRONT ? "передній" : "задній", (unsigned)mm,
+           nearest >= 0 ? tof_sensor_name((tof_id_t)nearest) : "?", TOF_OBSTACLE_MM);
+    return pos;
 }

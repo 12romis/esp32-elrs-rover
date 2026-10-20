@@ -9,8 +9,8 @@ files_hint: ["components/tof/tof_core.c", "components/tof/include/tof_core.h", "
 owner: "Агент"
 estimate: "M"
 context_budget: "M"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T2 — Додати в tof_core обмеження тяги пари бортів і тексти: показ датчиків і рядок входу в утримання

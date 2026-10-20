@@ -45,7 +45,7 @@
         "test/host/test_tof.c"
       ],
       "file": "docs/features/phase6-tof/tasks/t2-tof-core-limit-and-text.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T3",
