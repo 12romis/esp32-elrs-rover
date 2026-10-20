@@ -83,7 +83,7 @@
         "test/host/test_ioexp.c"
       ],
       "file": "docs/features/phase6-tof/tasks/t4-ioexp-core-xshut-bits.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T5",

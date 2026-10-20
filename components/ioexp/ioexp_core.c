@@ -36,7 +36,7 @@ bool ioexp_prepare(const ioexp_t *e, uint8_t desired, uint8_t *out_byte)
     if (!ioexp_available(e) || out_byte == NULL) {
         return false;
     }
-    *out_byte = (uint8_t)(desired & IOEXP_LIGHT_MASK);
+    *out_byte = (uint8_t)((desired & IOEXP_LIGHT_MASK) | (e->xshut & IOEXP_XSHUT_MASK));
     return true;
 }
 
@@ -45,7 +45,7 @@ bool ioexp_needs_write(const ioexp_t *e, uint8_t desired)
     if (!ioexp_available(e)) {
         return false;
     }
-    return e->bus_fault || (uint8_t)(desired & IOEXP_LIGHT_MASK) != e->shadow;
+    return e->bus_fault || (uint8_t)((desired & IOEXP_LIGHT_MASK) | (e->xshut & IOEXP_XSHUT_MASK)) != e->shadow;
 }
 
 ioexp_event_t ioexp_commit(ioexp_t *e, uint8_t byte, bool ack)
@@ -54,7 +54,7 @@ ioexp_event_t ioexp_commit(ioexp_t *e, uint8_t byte, bool ack)
         return IOEXP_EVT_NONE;
     }
     if (ack) {
-        e->shadow = (uint8_t)(byte & IOEXP_LIGHT_MASK);
+        e->shadow = (uint8_t)(byte & (IOEXP_LIGHT_MASK | IOEXP_XSHUT_MASK));
         if (e->bus_fault) {
             e->bus_fault = false;
             return IOEXP_EVT_RECOVERED;
@@ -66,6 +66,26 @@ ioexp_event_t ioexp_commit(ioexp_t *e, uint8_t byte, bool ack)
         return IOEXP_EVT_FAULT;
     }
     return IOEXP_EVT_NONE;
+}
+
+bool ioexp_xshut_set(ioexp_t *e, int bit, bool high)
+{
+    if (!ioexp_available(e) || bit < 0 || bit > 7 || ((IOEXP_XSHUT_MASK >> bit) & 1u) == 0) {
+        return false;
+    }
+    if (high) {
+        e->xshut = (uint8_t)(e->xshut | (1u << bit));
+    } else {
+        e->xshut = (uint8_t)(e->xshut & ~(1u << bit));
+    }
+    return true;
+}
+
+void ioexp_xshut_revert(ioexp_t *e)
+{
+    if (e != NULL) {
+        e->xshut = (uint8_t)(e->shadow & IOEXP_XSHUT_MASK);
+    }
 }
 
 bool ioexp_bit(const ioexp_t *e, int bit)

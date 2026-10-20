@@ -9,8 +9,8 @@ files_hint: ["components/ioexp/ioexp_core.c", "components/ioexp/include/ioexp_co
 owner: "Агент"
 estimate: "S"
 context_budget: "M"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T4 — Розширити ioexp_core: біти ліній скидання далекомірів у тіньовому регістрі і збирання байта зі збереженням
