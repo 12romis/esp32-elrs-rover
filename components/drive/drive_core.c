@@ -385,6 +385,9 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
     bool tof_ok = in->tof.valid && (uint32_t)(in->now_ms - in->tof.t_ms) <= TOF_STALE_MS;
     c->occ_front = tof_ok && in->tof.sector[TOF_SECTOR_FRONT].occupied;
     c->occ_rear = tof_ok && in->tof.sector[TOF_SECTOR_REAR].occupied;
+    if (!driving || (!c->occ_front && !c->occ_rear)) {
+        c->clamp_reported = false;   // сектор звільнився чи рух закінчився: наступне обрізання поясниться знову
+    }
     if (driving) {
         if (!tof_ok && !c->tof_stale) {
             c->tof_stale = true;
@@ -524,7 +527,9 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
             drive_mix(in->req.throttle, in->req.steer, &l, &r);
             float cl, cr;
             tof_limit_sides(l, r, c->occ_front, c->occ_rear, &cl, &cr);
-            o->tof_clamped = (cl != l || cr != r);   // консоль один раз пояснить, що напрямок заблоковано перешкодою
+            bool clamped = (cl != l || cr != r);
+            o->tof_clamped = clamped && !c->clamp_reported;   // консоль один раз, доки команди лишаються обрізаними (AC-15)
+            c->clamp_reported = clamped;
             c->outputs = drive_outputs_from(l, r);
             c->left_permille = signed_pm(c->outputs.left);
             c->right_permille = signed_pm(c->outputs.right);

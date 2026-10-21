@@ -1890,6 +1890,26 @@ static void test_tof_clamped_flag_on_accepted_command(void)
     CHECK(!o.accepted && !o.tof_clamped);                                 // відхилену команду не позначаємо
 }
 
+static void test_tof_clamped_explained_once_per_episode(void)
+{
+    // AC-15: пояснення один раз, доки повторні команди вперед лишаються обрізаними; після звільнення чи іншої команди — знову
+    drive_ctl_t c;
+    drive_ctl_init(&c);
+    drive_ctl_out_t o = gt(&c, APP_STATE_OBSTACLE_HOLD, 1000, tv(1000, true, false), DRIVE_REQ_DRIVE, 0.5f, 0.0f);
+    CHECK(o.accepted && o.tof_clamped);
+    o = gt(&c, APP_STATE_OBSTACLE_HOLD, 1500, tv(1500, true, false), DRIVE_REQ_DRIVE, 0.5f, 0.0f);       // повтор команди
+    CHECK(o.accepted && !o.tof_clamped && o.left_permille == 0);                                         // тягу все одно обрізано
+    o = gt(&c, APP_STATE_OBSTACLE_HOLD, 2000, tv(2000, true, false), DRIVE_REQ_DRIVE, 0.6f, 0.0f);
+    CHECK(o.accepted && !o.tof_clamped);
+    o = gt(&c, APP_STATE_OBSTACLE_HOLD, 2500, tv(2500, true, false), DRIVE_REQ_DRIVE, -0.3f, 0.0f);      // інша команда
+    CHECK(o.accepted && !o.tof_clamped);
+    o = gt(&c, APP_STATE_OBSTACLE_HOLD, 3000, tv(3000, true, false), DRIVE_REQ_DRIVE, 0.5f, 0.0f);       // знову вперед: нове пояснення
+    CHECK(o.accepted && o.tof_clamped);
+    gt(&c, APP_STATE_ARMED, 3500, tv(3500, false, false), DRIVE_REQ_NONE, 0, 0);                         // сектор звільнився
+    o = gt(&c, APP_STATE_ARMED, 3520, tv(3520, true, false), DRIVE_REQ_DRIVE, 0.5f, 0.0f);
+    CHECK(o.accepted && o.tof_clamped);                                                                   // новий епізод — знову
+}
+
 int main(void)
 {
     test_pid_boards_text();
@@ -1960,5 +1980,6 @@ int main(void)
     test_hold_parity_all_stops_off();
     test_hold_transitions_do_not_raise_stby();
     test_tof_clamped_flag_on_accepted_command();
+    test_tof_clamped_explained_once_per_episode();
     return test_summary();
 }

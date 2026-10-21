@@ -348,7 +348,7 @@ static bool bring_up(tof_id_t id)
 #define SENSORS_PRIORITY 3          // документ 02 §6.1: sensors, prio 3, core 0, 50 мс
 #define SENSORS_CORE 0
 #define REINIT_WAIT_MS 3500         // скільки консоль чекає на завершення повторної ініціалізації (бюджет 3 с + запас)
-#define REINIT_BUDGET_MS 1500       // новий датчик у reinit не починаємо, якщо минуло більше: найгірший датчик ≈ 1.5 с (review R6)
+#define REINIT_BUDGET_MS 1300       // новий датчик у reinit не починаємо, якщо минуло більше: найгірший датчик ≈ 1.5 с (review R6)
 #define BUS_RESET_EVERY_CYCLES 5    // після стількох циклів, у яких не відповів жоден датчик, скидаємо шину
 
 static tof_core_t s_core;           // лише задача sensors
@@ -357,7 +357,7 @@ static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 static uint32_t s_seq;
 static SemaphoreHandle_t s_reinit_done;
 static volatile bool s_reinit_req;
-static char s_reinit_text[480];
+static char s_reinit_text[700];   // 4 рядки по ≤ 150 байтів + службові (UTF-8); консольний буфер — 700
 static bool s_started;
 static bool s_prev_guarded[TOF_SECTORS];
 static bool s_prev_protection;
@@ -475,9 +475,13 @@ static void do_reinit(void)
     } else if (nf == 0) {
         snprintf(s_reinit_text, sizeof(s_reinit_text), "Відмовивших далекомірів немає: повторна ініціалізація не потрібна.");
     } else {
+        bool stuck = false;   // чи лишилась піднятою лінія скидання хоч одного відмовившого (review R7)
         for (int k = 0; k < nf; k++) {
-            ioexp_hal_xshut(XSHUT_BIT[failed[k]], false);
+            if (ioexp_hal_xshut(XSHUT_BIT[failed[k]], false) != IOEXP_WR_OK) {
+                stuck = true;
+            }
         }
+        s_xshut_stuck = stuck;   // прапорець ставиться й знімається тут: коротка помилка шини не блокує reinit назавжди
         bool aborted = false;
         uint32_t t_start = now_ms();
         for (int k = 0; k < nf && !aborted; k++) {
@@ -488,7 +492,8 @@ static void do_reinit(void)
                 break;
             }
             bool ok = false;
-            bool skipped = s_xshut_stuck || (uint32_t)(now_ms() - t_start) > REINIT_BUDGET_MS;
+            bool over_budget = (uint32_t)(now_ms() - t_start) > REINIT_BUDGET_MS;
+            bool skipped = s_xshut_stuck || over_budget;
             if (!skipped) {
                 ok = bring_up((tof_id_t)i);
             }
@@ -497,7 +502,7 @@ static void do_reinit(void)
             }
             log_events(&ev);
             int w = snprintf(s_reinit_text + pos, sizeof(s_reinit_text) - pos, "%s%s: %s", k ? "\n" : "", PLACE[i],
-                             ok ? "повернуто в роботу" : (skipped ? "не встигли за 3 с або лінію скидання не опущено — повторіть команду" : "досі відмова (не відповідає)"));
+                             ok ? "повернуто в роботу" : (!skipped ? "досі відмова (не відповідає)" : (s_xshut_stuck ? "лінію скидання не опущено — перевірте шину" : "не встигли за бюджет часу — повторіть команду")));
             if (w > 0 && (size_t)w < sizeof(s_reinit_text) - pos) pos += (size_t)w;
         }
         if (aborted) {
@@ -598,8 +603,8 @@ size_t tof_reinit_text(char *buf, size_t n)
     xSemaphoreTake(s_reinit_done, 0);   // скинути застарілий сигнал
     s_reinit_req = true;
     if (xSemaphoreTake(s_reinit_done, pdMS_TO_TICKS(REINIT_WAIT_MS)) != pdTRUE) {
-        return (size_t)snprintf(buf, n, "Задача sensors не завершила повторну ініціалізацію за %d с — перевірте журнал.",
-                                REINIT_WAIT_MS / 1000);
+        return (size_t)snprintf(buf, n, "Задача sensors не завершила повторну ініціалізацію за %d мс — перевірте журнал.",
+                                REINIT_WAIT_MS);
     }
     return (size_t)snprintf(buf, n, "%s", s_reinit_text);
 }

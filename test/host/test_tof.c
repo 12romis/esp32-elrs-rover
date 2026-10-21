@@ -421,7 +421,9 @@ static void test_hold_line(void)
     CHECK(strstr(buf, "150") != NULL);
     CHECK(strstr(buf, "170") != NULL);                       // поріг
     CHECK(strstr(buf, "U8") != NULL);
-    CHECK(strstr(buf, "1000") != NULL && strstr(buf, "1096") != NULL && strstr(buf, "96") != NULL);   // мітки й затримка (review R3)
+    CHECK(strstr(buf, "1000") != NULL && strstr(buf, "1096") != NULL && strstr(buf, "різниця 96 мс") != NULL);   // мітки й затримка (review R3)
+    tof_fmt_hold_line(buf, sizeof(buf), TOF_SECTOR_FRONT, 150, TOF_FRONT, true, 0xFFFFFFF0u, 0x50u);   // переповнення годинника
+    CHECK(strstr(buf, "різниця 96 мс") != NULL);
     n = tof_fmt_hold_line(buf, sizeof(buf), TOF_SECTOR_REAR, 90, TOF_REAR, false, 0, 2000);
     CHECK(strstr(buf, "перший відлік") == NULL);                // міток немає — рядок без них
     CHECK(strstr(buf, "задн") != NULL && strstr(buf, "U10") != NULL);

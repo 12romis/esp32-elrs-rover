@@ -64,7 +64,7 @@ Internal — no API surface.
 
 > **Given** автомат станів із таблицею переходів
 > **When** перевіряють кожну пару з семи станів
-> **Then** у таблиці рівно 12 дозволених пар із 49: пари фаз 0–3 плюс OBSTACLE_HOLD → DISARMED; в OBSTACLE_HOLD можна потрапити лише з ARMED, а вийти — в ARMED, DISARMED і FAILSAFE; з BOOT, SELFTEST, DISARMED, FAILSAFE і FAULT переходу в OBSTACLE_HOLD немає; команда озброєння в OBSTACLE_HOLD відхиляється, як в ARMED; STBY піднімається лише при вході в ARMED з DISARMED і не піднімається жодним переходом, що веде в OBSTACLE_HOLD чи з нього
+> **Then** у таблиці рівно 12 дозволених пар із 49: пари фаз 0–3 плюс OBSTACLE_HOLD → DISARMED; в OBSTACLE_HOLD можна потрапити лише з ARMED, а вийти — в ARMED, DISARMED і FAILSAFE; з BOOT, SELFTEST, DISARMED, FAILSAFE і FAULT переходу в OBSTACLE_HOLD немає; команда озброєння в OBSTACLE_HOLD відхиляється, як в ARMED; жоден перехід станів не піднімає STBY (ні в OBSTACLE_HOLD, ні з нього); піднімає його лише свідома команда руху — стік пульта чи `drive` — в ARMED або OBSTACLE_HOLD
 >
 > — `spec.md §5, AC-13, verbatim` · full text: [spec.md](../spec.md)
 
