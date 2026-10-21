@@ -9,8 +9,8 @@ files_hint: ["docs/features/phase6-tof/acceptance.md"]
 owner: "Агент"
 estimate: "S"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T15 — Написати acceptance.md: процедура приймання фази 6 на залізі для Розробника і шаблон записів у журнал вимірювань
