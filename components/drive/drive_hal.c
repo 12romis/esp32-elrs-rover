@@ -16,6 +16,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "pid_hal.h"
+#include "tof_hal.h"
 
 #define CONTROL_STACK 4096
 #define CONTROL_PRIORITY 5
@@ -205,7 +206,7 @@ static void log_stop(const drive_ctl_out_t *o, const drive_ctl_in_t *in, uint32_
         ESP_LOGW(TAG, "вимірювання напруги застаріло або відсутнє — мотори вимкнено, FAILSAFE");
         break;
     case DRIVE_STOP_DISARM:
-        if (in->state == APP_STATE_ARMED) {
+        if (app_state_is_driving(in->state)) {
             ESP_LOGI(TAG, "роззброєно — мотори вимкнено");
         }
         break;
@@ -247,6 +248,20 @@ static void log_events(const drive_ctl_out_t *o, const drive_ctl_in_t *in, uint3
     if (o->events & DRIVE_EVT_ENC_STALE) {
         ESP_LOGW(TAG, "вимірювання швидкості коліс не оновлюється понад %u мс — обидва борти без регулятора",
                  (unsigned)DRIVE_ENC_STALE_MS);
+    }
+    if (o->events & DRIVE_EVT_HOLD_ENTER) {   // утримання перед перешкодою (phase6-tof): сектор, відстань, датчик, поріг
+        char line[160];
+        tof_fmt_hold_line(line, sizeof(line), (tof_sector_t)o->hold_sector, o->hold_mm, o->hold_nearest);
+        ESP_LOGW(TAG, "OBSTACLE_HOLD: %s", line);
+    }
+    if (o->events & DRIVE_EVT_HOLD_EXIT) {
+        ESP_LOGI(TAG, "сектор вільний — повернення в ARMED");
+    }
+    if (o->events & DRIVE_EVT_TOF_STALE) {
+        ESP_LOGW(TAG, "знімок далекомірів застарів або не отримано — сектори не охороняються, захист від зіткнень вимкнено");
+    }
+    if (o->events & DRIVE_EVT_TOF_RESTORED) {
+        ESP_LOGI(TAG, "знімок далекомірів знову оновлюється — захист від зіткнень відновлено");
     }
     if (o->events & DRIVE_EVT_ENC_RESTORED) {
         ESP_LOGI(TAG, "вимірювання швидкості коліс відновилось — регулятор бортів з нуля");
@@ -297,6 +312,7 @@ static void control_task(void *arg)
         in.outputs_inhibited = !s_running;
         battery_get_snapshot(&in.battery);
         crsf_snapshot_get(&in.rc);   // без приймача знімок порожній: стендовий режим (ADR-0001)
+        tof_snapshot_get(&in.tof);    // далекоміри (phase6-tof, ADR-0001): валідність і вік перевіряє drive_ctl_step
         enc_input(&in.enc);           // регулятор (phase5-pid, ADR-0001): швидкість коліс зі знімка encoders
         pid_hal_get(&in.pid, &in.pid_saving);
         uint32_t now = now_ms();  // час беремо ПІСЛЯ зчитування черги й знімка: вік не стає відʼємним
@@ -317,7 +333,7 @@ static void control_task(void *arg)
         }
         uint32_t applied_ms = now_ms();
         // Новий кадр, що керує бортами з пульта (ARMED, без запиту переходу): мітка кадру від crsf_rx → мітка запису.
-        if (in.state == APP_STATE_ARMED && ctl.remote_active && ctl.link_alive && !out.has_state_request &&
+        if (app_state_is_driving(in.state) && ctl.remote_active && ctl.link_alive && !out.has_state_request &&
             in.rc.have_frame && in.rc.seq != lat_seq) {
             drive_lat_add(&lat, in.rc.t_ms, applied_ms);
         }
@@ -336,6 +352,9 @@ static void control_task(void *arg)
             if (out.state_request == APP_STATE_FAILSAFE) {
                 // Вхід у FAILSAFE завжди з причиною; повторне повідомлення «напруга» підвищує причину (ADR-0002).
                 transition_ok = app_state_enter_failsafe(out.failsafe_cause) == APP_SM_OK;
+            } else if (out.state_request == APP_STATE_ARMED && in.state == APP_STATE_OBSTACLE_HOLD) {
+                // Повернення з утримання — не озброєння: pid_hal_arm_begin і фіксація режиму регулятора не потрібні (ADR-0004).
+                transition_ok = app_state_request(out.state_request) == APP_SM_OK;
             } else if (out.state_request == APP_STATE_ARMED) {
                 // Дозвіл на ARMED береться атомарно проти запису набору і зміни режиму (spec AC-15, рев'ю F1, R1):
                 // ознака «триває збереження» на початку такту могла застаріти, поки такт ішов.
@@ -343,6 +362,10 @@ static void control_task(void *arg)
                 if (pid_hal_arm_begin(&busy)) {
                     transition_ok = app_state_request(out.state_request) == APP_SM_OK;
                     pid_hal_arm_end();
+                    if (transition_ok && (!in.tof.valid || !in.tof.protection)) {   // озброєно без захисту: одне попередження на озброєння
+                        ESP_LOGW(TAG, "озброєно без захисту від зіткнень: %s", in.tof.valid ? "жоден далекомір не працює"
+                                                                                          : "далекоміри ще не готові");
+                    }
                 } else {
                     transition_ok = false;
                     drive_arm_refused(&out, have_req, busy);   // рішення й причина — у drive_core (рев'ю S1)
@@ -371,7 +394,7 @@ static void control_task(void *arg)
         s_status.arm_block = blk;
         s_status.failsafe_cause = in.failsafe_cause;
         s_status.fsx = fsx;
-        if (out.stop != DRIVE_STOP_NONE && !(out.stop == DRIVE_STOP_DISARM && in.state != APP_STATE_ARMED)) {
+        if (out.stop != DRIVE_STOP_NONE && !(out.stop == DRIVE_STOP_DISARM && !app_state_is_driving(in.state))) {
             s_status.last_stop = out.stop;  // зупинка справжня: запам'ятати для status (AC-12)
             s_status.last_stop_min_mv = out.min_mv;
             s_status.last_stop_t_ms = now;

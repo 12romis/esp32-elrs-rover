@@ -9,8 +9,8 @@ files_hint: ["components/drive/drive_hal.c", "components/drive/CMakeLists.txt"]
 owner: "Агент"
 estimate: "M"
 context_budget: "M"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T12 — Підключити далекоміри до drive_hal: знімок у кроці, запит OBSTACLE_HOLD ↔ ARMED без pid_hal_arm_begin, журнал, предикат у журналі й лічильнику затримки

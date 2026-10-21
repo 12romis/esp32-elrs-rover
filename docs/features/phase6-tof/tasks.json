@@ -254,7 +254,7 @@
         "components/drive/CMakeLists.txt"
       ],
       "file": "docs/features/phase6-tof/tasks/t12-drive-hal-wire-tof-and-hold.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T13",
