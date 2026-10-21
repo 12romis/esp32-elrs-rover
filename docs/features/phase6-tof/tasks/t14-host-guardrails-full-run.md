@@ -9,8 +9,8 @@ files_hint: ["test/host/run_tests.sh", "test/host/selftest_tools.sh", "test/host
 owner: "Агент"
 estimate: "S"
 context_budget: "M"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T14 — Посилити хостові перевірки: повний прогін, статичні перевірки core, пінів, затримок і калібрування для фази 6

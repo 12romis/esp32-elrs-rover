@@ -18,8 +18,8 @@ test/host/run_tests.sh
 | `check_pins.sh` | номери GPIO лише в `board_pins.h` (AC-11, constitution п. 2) |
 | `check_bus_rules.sh` | розряди розширювача лише з `board_pins.h`, без застарілих драйверів шини, шина ≤ 100 кГц (AC-25 phase2-io, constitution пп. 2, 5, 14) |
 | `check_protected.sh` | захищені файли не змінені без згоди (AC-10, constitution п. 10–11) |
-| `check_delays.sh` | періодичні задачі без `vTaskDelay` — лише `vTaskDelayUntil` (phase3-crsf AC-19, constitution п. 14) |
-| `check_calib.sh` | константи `encoders_calib.h` мають рядок у `docs/measured.md` з тим самим значенням (phase4-encoders AC-11, constitution пп. 3, 13) |
+| `check_delays.sh` | періодичні задачі без `vTaskDelay` — лише `vTaskDelayUntil` (phase3-crsf AC-19, constitution п. 14); виняток — очікування готовності регістра в `battery_hal.c` і `tof_hal.c` |
+| `check_calib.sh` | константи `encoders_calib.h` і `tof_calib.h` (`TOF_OBSTACLE_MM`) мають рядок у `docs/measured.md` з тим самим значенням (phase4-encoders AC-11, phase6-tof AC-18, constitution пп. 3, 13) |
 | `check_power_limit.sh` | межа потужності `DRIVE_PWM_MAX_PERMILLE` — рівно 750 у `drive_core.h`, інших визначень межі ШІМ у компонентах немає (phase5-pid AC-09, AC-19) |
 
 `selftest_tools.sh` перевіряє самі скрипти на навмисно поганих прикладах у тимчасовому каталозі.

@@ -16,16 +16,31 @@ for d in "$ROOT"/components/*/include; do [ -d "$d" ] && INCLUDES+=("-I$d"); don
 INCLUDES+=("-I$ROOT/test/host")
 mapfile -t CORES < <(ls "$ROOT"/components/*/*_core.c 2>/dev/null)
 
-total=0; passed=0; rc=0
-for t in "$DIR"/test_*.c; do
-    [ -e "$t" ] || continue
-    name="$(basename "$t" .c)"
-    if ! gcc -std=c11 -Wall -Wextra -Werror "${INCLUDES[@]}" -o "$BUILD/$name" "$t" "${CORES[@]}" 2>"$BUILD/$name.log"; then
-        echo "ЗБІРКА ПРОВАЛЕНА: $name"; cat "$BUILD/$name.log"; rc=1; continue
+# Ядра збираються один раз у об'єктні файли (паралельно), кожен тест — теж паралельно; вивід — у порядку імен (≤ 5 с, phase6-tof NFR).
+mkdir -p "$BUILD/obj"
+printf '%s\n' "${CORES[@]}" | xargs -P 8 -I{} sh -c 'gcc -std=c11 -Wall -Wextra -Werror '"${INCLUDES[*]}"' -c "{}" -o "'"$BUILD"'/obj/$(basename "{}" .c).o" 2>"'"$BUILD"'/obj/$(basename "{}" .c).log" || { echo "ЗБІРКА ЯДРА ПРОВАЛЕНА: {}"; cat "'"$BUILD"'/obj/$(basename "{}" .c).log"; exit 255; }'
+core_rc=$?
+run_one() {
+    local t="$1" name; name="$(basename "$t" .c)"
+    if ! gcc -std=c11 -Wall -Wextra -Werror "${INCLUDES[@]}" -o "$BUILD/$name" "$t" "$BUILD"/obj/*.o 2>"$BUILD/$name.log"; then
+        echo "ЗБІРКА ПРОВАЛЕНА: $name" >"$BUILD/$name.out"; cat "$BUILD/$name.log" >>"$BUILD/$name.out"; echo 1 >"$BUILD/$name.rc"; return
     fi
-    out="$("$BUILD/$name")"; trc=$?
+    "$BUILD/$name" >"$BUILD/$name.res"; local trc=$?
+    cp "$BUILD/$name.res" "$BUILD/$name.out"
+    [ $trc -ne 0 ] && echo "ТЕСТ ПАДАЄ: $name" >>"$BUILD/$name.out"
+    echo $trc >"$BUILD/$name.rc"
+}
+if [ $core_rc -ne 0 ]; then echo "Збірка ядер провалена"; exit 1; fi
+tests=()
+for t in "$DIR"/test_*.c; do [ -e "$t" ] && tests+=("$t"); done
+for t in "${tests[@]}"; do run_one "$t" & while [ "$(jobs -rp | wc -l)" -ge 8 ]; do sleep 0.05; done; done
+wait
+total=0; passed=0; rc=0
+for t in "${tests[@]}"; do
+    name="$(basename "$t" .c)"
+    out="$(cat "$BUILD/$name.out")"
     echo "$out" | grep -v '^TESTS ' || true
-    [ $trc -ne 0 ] && { echo "ТЕСТ ПАДАЄ: $name"; rc=1; }
+    [ "$(cat "$BUILD/$name.rc")" != 0 ] && rc=1
     read -r _ n p < <(echo "$out" | grep '^TESTS ' | tail -1)
     total=$((total + ${n:-0})); passed=$((passed + ${p:-0}))
 done

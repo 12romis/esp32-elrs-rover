@@ -295,7 +295,7 @@
         "test/host/README.md"
       ],
       "file": "docs/features/phase6-tof/tasks/t14-host-guardrails-full-run.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T15",
