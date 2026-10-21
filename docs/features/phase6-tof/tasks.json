@@ -211,7 +211,7 @@
         "test/host/check_delays.sh"
       ],
       "file": "docs/features/phase6-tof/tasks/t10-tof-hal-driver-xshut-sequence.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T11",

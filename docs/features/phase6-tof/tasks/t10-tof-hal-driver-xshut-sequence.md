@@ -9,8 +9,8 @@ files_hint: ["components/tof/tof_hal.c", "components/tof/include/tof_hal.h", "co
 owner: "Агент"
 estimate: "M"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T10 — Створити tof_hal: драйвер VL53L0X (порт p4_tof.c), послідовність XSHUT з новими адресами, виняток у check_delays
