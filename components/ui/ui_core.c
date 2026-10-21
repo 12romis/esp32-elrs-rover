@@ -23,7 +23,7 @@ bool ui_core_channel_allows(app_state_t st, ui_channel_t ch)
 
 ui_rear_mode_t ui_core_rear_mode(app_state_t st)
 {
-    return (st == APP_STATE_ARMED || st == APP_STATE_FAILSAFE) ? UI_REAR_AUTO : UI_REAR_MANUAL;
+    return (app_state_is_driving(st) || st == APP_STATE_FAILSAFE) ? UI_REAR_AUTO : UI_REAR_MANUAL;
 }
 
 void ui_core_init(ui_core_t *u, uint32_t signal_hz)
@@ -113,9 +113,12 @@ uint32_t ui_core_remaining_ms(const ui_core_t *u, uint32_t now_ms)
 
 // ---------- такт ----------
 
-static bool is_signal_state(app_state_t s)
+// Сигнал переходу: DISARMED, FAILSAFE і вхід у рух зі стану не-руху (ADR-0004 phase6-tof). Перехід між ARMED і
+// OBSTACLE_HOLD — не вхід у рух, тож тихий. «Вхід у рух» — за станом, який бачить ui (опитування раз на 100 мс):
+// озброєння біля вже зайнятого сектору виглядає як DISARMED → OBSTACLE_HOLD і є озброєнням.
+static bool is_signal_state(app_state_t s, bool entering_motion)
 {
-    return s == APP_STATE_DISARMED || s == APP_STATE_ARMED || s == APP_STATE_FAILSAFE;
+    return s == APP_STATE_DISARMED || s == APP_STATE_FAILSAFE || entering_motion;
 }
 
 void ui_core_tick(ui_core_t *u, const ui_in_t *in, ui_out_t *out)
@@ -124,11 +127,13 @@ void ui_core_tick(ui_core_t *u, const ui_in_t *in, ui_out_t *out)
         return;
     }
     bool changed = !u->have_last || in->state != u->last_state;
+    bool driving = app_state_is_driving(in->state);
+    bool entering_motion = changed && driving && !(u->have_last && app_state_is_driving(u->last_state));
     if (changed) {
-        if (in->state == APP_STATE_ARMED) {
-            u->manual[UI_CH_HEAD] = true;   // на вході в ARMED фари вмикаються самі; light head off в ARMED ще можна
+        if (entering_motion) {
+            u->manual[UI_CH_HEAD] = true;   // на вході в рух фари вмикаються самі; light head off в ARMED ще можна
         }
-        if (in->state == APP_STATE_ARMED || in->state == APP_STATE_FAILSAFE) {
+        if (driving || in->state == APP_STATE_FAILSAFE) {
             u->manual[UI_CH_RED] = false;   // далі задні ліхтарі керує автоматика, ручний стан не повертається
             u->manual[UI_CH_GREEN] = false;
         }
@@ -156,7 +161,7 @@ void ui_core_tick(ui_core_t *u, const ui_in_t *in, ui_out_t *out)
 
     // Автоматичні звуки спершу (вони замінюють усе, що звучить), потім завершення звуку й слот.
     if (u->signal_hz != 0) {
-        if (changed && is_signal_state(in->state)) {
+        if (changed && is_signal_state(in->state, entering_motion)) {
             start_sound(u, u->signal_hz, UI_SIGNAL_TRANSITION_MS, in->now_ms, true);
         }
         if (u->failsafe) {
@@ -179,7 +184,7 @@ void ui_core_tick(ui_core_t *u, const ui_in_t *in, ui_out_t *out)
     memset(&o, 0, sizeof(o));
     o.head = u->manual[UI_CH_HEAD];  // фари завжди ручні
     if (in->expander_ok) {
-        if (in->state == APP_STATE_ARMED) {
+        if (driving) {
             int sum = (int)in->left_permille + (int)in->right_permille;
             o.red = sum >= 0;   // жовтий (червоний і зелений разом), доки стоїть чи їде вперед
             o.green = true;     // зелений світить завжди; назад — лише зелений

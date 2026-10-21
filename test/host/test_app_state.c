@@ -14,7 +14,7 @@ static void capture_log(const char *msg)
     g_log[sizeof(g_log) - 1] = '\0';
 }
 
-// Очікувані 11 дозволених пар (фаза 0: 10; фаза 3: + FAILSAFE → DISARMED, ADR-0002).
+// Очікувані 12 дозволених пар (фаза 0: 10; фаза 3: + FAILSAFE → DISARMED, ADR-0002; фаза 6: + OBSTACLE_HOLD → DISARMED, ADR-0004).
 static const struct { app_state_t from, to; } k_allowed[] = {
     {APP_STATE_BOOT, APP_STATE_SELFTEST},
     {APP_STATE_SELFTEST, APP_STATE_DISARMED},
@@ -25,6 +25,7 @@ static const struct { app_state_t from, to; } k_allowed[] = {
     {APP_STATE_ARMED, APP_STATE_OBSTACLE_HOLD},
     {APP_STATE_ARMED, APP_STATE_FAILSAFE},
     {APP_STATE_OBSTACLE_HOLD, APP_STATE_ARMED},
+    {APP_STATE_OBSTACLE_HOLD, APP_STATE_DISARMED},
     {APP_STATE_OBSTACLE_HOLD, APP_STATE_FAILSAFE},
     {APP_STATE_FAILSAFE, APP_STATE_DISARMED},
 };
@@ -81,8 +82,8 @@ static void test_all_49_pairs(void)
     }
     CHECK(allowed + refused == 49);
     printf("ПОКРИТТЯ пар станів автомата: %d з 49\n", allowed + refused);
-    CHECK(allowed == 11);
-    CHECK(refused == 38);
+    CHECK(allowed == 12);
+    CHECK(refused == 37);
 }
 
 static void test_boot_to_armed_refused(void)
@@ -112,7 +113,31 @@ static void test_exits_from_failsafe_and_fault(void)
         CHECK(app_sm_is_allowed(APP_STATE_FAILSAFE, (app_state_t)t) == (t == APP_STATE_DISARMED));
         CHECK(!app_sm_is_allowed(APP_STATE_FAULT, (app_state_t)t));
     }
-    CHECK(!app_sm_is_allowed(APP_STATE_OBSTACLE_HOLD, APP_STATE_DISARMED));
+}
+
+static void test_obstacle_hold_entry_and_exits(void)
+{
+    // Вхід в OBSTACLE_HOLD лише з ARMED; виходи — ARMED, DISARMED, FAILSAFE (phase6-tof AC-13).
+    for (int f = 0; f < APP_STATE_COUNT; f++) {
+        CHECK(app_sm_is_allowed((app_state_t)f, APP_STATE_OBSTACLE_HOLD) == (f == APP_STATE_ARMED));
+    }
+    for (int t = 0; t < APP_STATE_COUNT; t++) {
+        bool expect = t == APP_STATE_ARMED || t == APP_STATE_DISARMED || t == APP_STATE_FAILSAFE;
+        CHECK(app_sm_is_allowed(APP_STATE_OBSTACLE_HOLD, (app_state_t)t) == expect);
+    }
+    app_sm_t sm;
+    sm_at(&sm, APP_STATE_OBSTACLE_HOLD);
+    CHECK(app_sm_request(&sm, APP_STATE_DISARMED, 1) == APP_SM_OK);   // роззброєння за один перехід
+    CHECK(app_sm_state(&sm) == APP_STATE_DISARMED);
+}
+
+static void test_driving_predicate(void)
+{
+    for (int s = 0; s < APP_STATE_COUNT; s++) {
+        bool expect = s == APP_STATE_ARMED || s == APP_STATE_OBSTACLE_HOLD;
+        CHECK(app_state_is_driving((app_state_t)s) == expect);
+    }
+    CHECK(!app_state_is_driving(APP_STATE_COUNT));   // поза діапазоном — не їде
 }
 
 static void test_boot_sequence_history(void)
@@ -220,6 +245,8 @@ int main(void)
     test_boot_to_armed_refused();
     test_armed_reachable_only_from_disarmed_and_hold();
     test_exits_from_failsafe_and_fault();
+    test_obstacle_hold_entry_and_exits();
+    test_driving_predicate();
     test_failsafe_cause_and_guard();
     test_boot_sequence_history();
     test_history_overflow_keeps_last_16();

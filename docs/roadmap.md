@@ -57,7 +57,7 @@ updated_at: "2026-10-20"
 | 3 | `phase3-crsf` — стіки пульта рухають мотори, вимкнення пульта зупиняє за 500 мс | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 3 — ELRS / CRSF» | S | shipped — [spec](features/phase3-crsf/spec.md) |
 | 4 | `phase4-encoders` — чотири лічильники дають стабільні оберти зі знаком і без зривів | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 4 — енкодери» | S | shipped — [spec](features/phase4-encoders/spec.md) |
 | 5 | `phase5-pid` — борт тримає задану швидкість під навантаженням, коефіцієнти міняються з консолі | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 5 — PID» | S | shipped — [spec](features/phase5-pid/spec.md) |
-| 6 | `phase6-tof` — ровер зупиняється перед перешкодою, дозволяє здати назад, переживає відмову сенсора | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 6 — далекоміри й протизіткнення» | L | idea |
+| 6 | `phase6-tof` — ровер зупиняється перед перешкодою, дозволяє здати назад, переживає відмову сенсора | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 6 — далекоміри й протизіткнення» | S | shipped — [spec](features/phase6-tof/spec.md) |
 | 7 | `phase7-telemetry` — пульт бачить напругу батареї, є README, блок-схема й заповнений чекліст | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 7 — телеметрія, інтеграція, документація» | S | idea |
 
 ## Not yet specified
@@ -77,7 +77,6 @@ updated_at: "2026-10-20"
 | # | Question | Type | Owner | Blocks |
 |---|---|:---:|:---:|:---:|
 | D2 | `CRSF_BAUD`: 420000 чи 416666 (§10.2) | prototype | human | 3 |
-| D4 | Драйвер VL53L0X: порт API ST, компонент спільноти чи мінімальний власний (рекомендація документа — власний, §10.3) | prototype | agent | 6 |
 
 ## Decisions so far
 
@@ -87,6 +86,8 @@ updated_at: "2026-10-20"
 - Поточна архітектура: 1 реальний компонент і 9 заглушок → [`docs/architecture-map.md`](architecture-map.md)
 - Прозвонка моторних шлейфів пройдена (піни 1–2 обмотка ≈ 12 Ом, ізоляція до пінів 3–6) → [`docs/measured.md`](measured.md)
 - D3 закрито: вихід енкодера не відкритий колектор, усі чотири енкодери рахують без підтяжок, переробка плати не потрібна (`ENC_NEEDS_PULLUP` = 0, P6, 2026-10-17) → [`docs/measured.md`](measured.md)
+- D4 закрито: драйвер VL53L0X — мінімальний власний (варіант 3 з §10.3), підтверджено P4 (2026-10-16) і реалізовано у `components/tof/tof_hal.c` → [`docs/measured.md`](measured.md)
+- `TOF_OBSTACLE_MM` = 170 мм (вибіг ≤ 30 мм + реакція ≈ 86 + похибка датчика ≈ 12, рішення Розробника, 2026-10-21) → [`docs/measured.md`](measured.md)
 
 ## Dependency graph
 
@@ -160,3 +161,4 @@ flowchart LR
 | 3 `phase3-crsf` | 2026-10-18 | [changelog](features/phase3-crsf/changelog.md) (AC-14 і NFR ≤ 50 мс на залізі не показані; T13–T18 на залізі не прогнані) |
 | 4 `phase4-encoders` | 2026-10-19 | [changelog](features/phase4-encoders/changelog.md) (крок 2 для FL і RL поза ±2 % — прийнято як похибку ручного обертання) |
 | 5 `phase5-pid` | 2026-10-20 | [changelog](features/phase5-pid/changelog.md) (приймання на залізі AC-01, -02, -05, -06, -10, -13, -14 і KPI відкладено Розробником — `acceptance.md`) |
+| 6 `phase6-tof` | 2026-10-21 | [changelog](features/phase6-tof/changelog.md) (приймання на залізі AC-01…AC-12, AC-14…AC-16, KPI і OQ-2 відкладено Розробником — `acceptance.md`) |

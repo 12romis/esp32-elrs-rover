@@ -11,6 +11,7 @@
 #include "crsf_core.h"
 #include "encoders_core.h"
 #include "pid_core.h"
+#include "tof_core.h"
 
 // Межа потужності борту, проміле від повної (phase5-pid spec AC-09: 0.75 у фазі 5; підняття винесено разом із захистом
 // від заклинення, spec §3). Консоль її не змінює.
@@ -99,6 +100,10 @@ typedef struct {
     uint32_t enc_intervals;        // лічильник інтервалів останнього обробленого знімка
     uint64_t enc_t_us;             // мітка останнього обробленого знімка
     bool enc_stale;                // знімок застарів (spec AC-12b): подія журналу — один раз
+    // --- phase6-tof (ADR-0001) ---
+    bool tof_stale;                // знімок далекомірів застарів чи не отримано: подія журналу — один раз
+    bool occ_front, occ_rear;      // сектори зайняті в цьому такті (знімок свіжий і сектор зайнятий)
+    bool clamp_reported;           // про обрізання тяги вже пояснено, доки команди лишаються обрізаними (spec AC-15: один раз)
     pid_trace_acc_t trace;         // накопичення кадру трасування (ADR-0003)
 } drive_ctl_t;
 
@@ -115,6 +120,10 @@ typedef struct {
 #define DRIVE_EVT_CAUSE_UPGRADE (1u << 6)     // відсічка по напрузі у FAILSAFE через звʼязок: причина стає «напруга»
 #define DRIVE_EVT_ENC_STALE (1u << 7)         // знімок енкодерів застарів: обидва борти без регулятора (phase5-pid AC-12b)
 #define DRIVE_EVT_ENC_RESTORED (1u << 8)      // знімок енкодерів знову оновлюється: регулятор з нуля
+#define DRIVE_EVT_HOLD_ENTER (1u << 9)        // запит OBSTACLE_HOLD: сектор зайнятий (hold_sector, hold_mm, hold_nearest)
+#define DRIVE_EVT_HOLD_EXIT (1u << 10)        // запит ARMED з OBSTACLE_HOLD: сектори вільні
+#define DRIVE_EVT_TOF_STALE (1u << 11)        // знімок далекомірів застарів чи не отримано: сектори не охороняються
+#define DRIVE_EVT_TOF_RESTORED (1u << 12)     // знімок далекомірів знову оновлюється
 
 // Стабільний звʼязок для виходу з FAILSAFE: безперервно живий від першого кадру після втрати (spec AC-08).
 #define DRIVE_LINK_STABLE_MS 1000
@@ -156,6 +165,8 @@ typedef struct {
     drive_enc_in_t enc;          // знімок енкодерів; нульова ініціалізація — енкодерів немає (режим без регулятора)
     pid_set_t pid;               // копія набору коефіцієнтів і режиму; нульова ініціалізація — «не налаштований»
     bool pid_saving;             // триває запис набору в памʼять плати: озброєння відхиляється (spec AC-15)
+    // --- phase6-tof ---
+    tof_view_t tof;              // знімок далекомірів; нульова ініціалізація (valid == false) — захисту немає, сектори вільні
 } drive_ctl_in_t;
 
 typedef struct {
@@ -175,6 +186,12 @@ typedef struct {
     uint32_t events;             // DRIVE_EVT_* для журналу
     // --- phase5-pid ---
     pid_side_view_t pid_view[2]; // стан бортів для показу `pid` і кадру трасування
+    bool tof_clamped;            // у такті прийнятої команди руху тягу в бік зайнятого сектору обрізано (spec AC-15)
+    uint8_t hold_sector;         // для DRIVE_EVT_HOLD_ENTER: tof_sector_t зайнятого сектору
+    uint16_t hold_mm;            // його відстань
+    bool hold_has_first;         // відома мітка першого відліку менше порога
+    uint32_t hold_first_ms;      // мітка першого відліку менше порога (початок відліку реакції, spec AC-01)
+    int8_t hold_nearest;         // датчик з найменшою відстанню (tof_id_t) або −1
     bool trace_ready;            // накопичено кадр трасування (кожні PID_TRACE_TICKS тактів у ARMED)
     pid_trace_frame_t trace;
 } drive_ctl_out_t;

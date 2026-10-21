@@ -1,4 +1,4 @@
 idf_component_register(SRCS "main.c"
                        INCLUDE_DIRS "."
-                       REQUIRES app_state rover_console watchdog storage drive battery ioexp ui encoders pid
+                       REQUIRES app_state rover_console watchdog storage drive battery ioexp ui encoders pid tof
                        PRIV_REQUIRES log)

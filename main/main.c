@@ -1,6 +1,7 @@
 // Фаза 1: старт у відомому стані й керування моторами з консолі. Тільки ініціалізація, старт задач і колбеки, без логіки.
 // Порядок старту (sad.md §5): виходи моторів вимкнено першими, потім нуль у розширювач (перша операція на шині), захист, консоль,
-// вимірювання напруги, control, ui, сховище.
+// вимірювання напруги, control, ui, сховище. Далекоміри (phase6-tof): tof_start після ioexp_start і encoders_start, до control —
+// його задача sensors піднімає чотири датчики (лінії скидання через ioexp) і публікує знімок, який control читає щотакту.
 #include <stdio.h>
 #include <string.h>
 
@@ -14,6 +15,7 @@
 #include "pid_hal.h"
 #include "esp_log.h"
 #include "storage_hal.h"
+#include "tof_hal.h"
 #include "ui_hal.h"
 #include "watchdog_hal.h"
 
@@ -47,7 +49,12 @@ static bool motor_cmd(console_motor_cmd_t cmd, float throttle, float steer, cons
         drive_disarm_text(r.state_before, r.has_state_request, r.state_request, r.stop, r.failsafe_cause, r.fsx,
                           r.switch_arm, reply->text, sizeof(reply->text));
     } else {
-        reply->text[0] = '\0';
+        if (r.tof_clamped) {   // AC-15: один раз на прийняту команду
+            snprintf(reply->text, sizeof(reply->text),
+                     "Напрямок заблоковано перешкодою: тягу в цей бік обнулено, поворот і протилежний бік дозволені.");
+        } else {
+            reply->text[0] = '\0';
+        }
     }
     return true;
 }
@@ -141,6 +148,8 @@ static const console_ops_t s_console_ops = {
     .pid_set_mode = pid_hal_set_mode,
     .pid_save = pid_hal_save,
     .pid_trace = pid_hal_trace_enable,
+    .tof_show = tof_show_text,
+    .tof_reinit = tof_reinit_text,
 };
 
 void app_main(void)
@@ -163,6 +172,11 @@ void app_main(void)
     esp_err_t enc = encoders_start();
     if (enc != ESP_OK) {
         ESP_LOGW(TAG, "енкодери стартували не повністю (%s) — подробиці в enc, ровер працює далі", esp_err_to_name(enc));
+    }
+    // Далекоміри (ADR-0003 phase6-tof): власна задача sensors; збій старту лише вимикає захист від зіткнень, ровер працює далі.
+    esp_err_t tof = tof_start();
+    if (tof != ESP_OK) {
+        ESP_LOGW(TAG, "далекоміри не стартували (%s) — захист від зіткнень вимкнено, ровер працює без нього", esp_err_to_name(tof));
     }
     esp_err_t con = console_start(&s_console_ops);
     esp_err_t bat = battery_start();

@@ -74,6 +74,10 @@ typedef struct {
     size_t (*pid_set_mode)(bool on, char *buf, size_t n);
     size_t (*pid_save)(char *buf, size_t n);
     void (*pid_trace)(bool on);
+    // Далекомірі (phase6-tof): показ і повторна ініціалізація пишуть відповідь у буфер виклику (рядки розділені \n) і
+    // повертають довжину. NULL — далекоміри не підключені.
+    size_t (*tof_show)(char *buf, size_t n);
+    size_t (*tof_reinit)(char *buf, size_t n);
 } console_ops_t;
 
 // Встановлює драйвер USB-Serial-JTAG і стартує задачу console (core 0, пріоритет 1).

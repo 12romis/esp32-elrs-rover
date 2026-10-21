@@ -5,8 +5,10 @@
 # Використання: test/host/check_delays.sh [корінь_проєкту]
 ROOT="${1:-$(cd "$(dirname "$0")/../.." && pwd)}"
 # Шлях відносно кореня → причина. battery_hal.c: пауза 1 тік між відліками АЦП в одному пакеті (фаза 1), період
-# задачі battery — vTaskDelayUntil.
-ALLOW=("components/battery/battery_hal.c")
+# задачі battery — vTaskDelayUntil. tof_hal.c: vTaskDelay(1) лише в очікуванні готовності регістра VL53L0X в ініціалізації
+# (пауза всередині одного вимірювання, phase6-tof); 5 мс після підняття лінії скидання — esp_rom_delay_us, період задачі sensors —
+# vTaskDelayUntil.
+ALLOW=("components/battery/battery_hal.c" "components/tof/tof_hal.c")
 bad=0
 while IFS= read -r f; do
     rel="${f#$ROOT/}"

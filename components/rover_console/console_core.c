@@ -92,6 +92,7 @@ static console_cmd_t first_word(const char *line, const char **rest)
     if (n == 4 && strncmp(start, "beep", n) == 0) return CONSOLE_CMD_BEEP;
     if (n == 3 && strncmp(start, "enc", n) == 0) return CONSOLE_CMD_ENC;
     if (n == 3 && strncmp(start, "pid", n) == 0) return CONSOLE_CMD_PID;
+    if (n == 3 && strncmp(start, "tof", n) == 0) return CONSOLE_CMD_TOF;
     return CONSOLE_CMD_UNKNOWN;
 }
 
@@ -115,7 +116,7 @@ console_cmd_t console_parse(const char *line, app_state_t state)
         if (console_parse_drive(line, &t, &s) != CONSOLE_DRIVE_OK) {
             return CONSOLE_CMD_BAD_ARGS;
         }
-        return state == APP_STATE_ARMED ? CONSOLE_CMD_DRIVE : CONSOLE_CMD_DENIED_STATE;
+        return app_state_is_driving(state) ? CONSOLE_CMD_DRIVE : CONSOLE_CMD_DENIED_STATE;   // ARMED і OBSTACLE_HOLD
     }
     if (cmd == CONSOLE_CMD_LIGHT || cmd == CONSOLE_CMD_BEEP) {
         // порядок перевірок: спершу стан (клітинка «ні» завжди відмовляє за станом), потім синтаксис і діапазон
@@ -136,6 +137,13 @@ console_cmd_t console_parse(const char *line, app_state_t state)
         case CONSOLE_ENC_RESET:    return CONSOLE_CMD_ENC_RESET;
         default:                   return CONSOLE_CMD_BAD_ARGS;
         }
+    }
+    if (cmd == CONSOLE_CMD_TOF) {
+        // Хибна форма відмовляє раніше за стан (spec AC-11: у будь-якому стані); далі матриця дозволів (AC-09).
+        console_tof_t p = console_parse_tof(line);
+        if (p.form >= CONSOLE_TOF_ERR_WORD) return CONSOLE_CMD_BAD_ARGS;
+        if (!console_tof_allowed(p.form, state)) return CONSOLE_CMD_DENIED_STATE;
+        return p.form == CONSOLE_TOF_REINIT ? CONSOLE_CMD_TOF_REINIT : CONSOLE_CMD_TOF;
     }
     if (cmd == CONSOLE_CMD_PID) {
         // Хибна форма відмовляє раніше за стан (spec AC-04: у будь-якому стані); далі матриця дозволів.
@@ -176,12 +184,13 @@ const char *console_help_text(void)
            "  wdt-test  — перевірка сторожового таймера: навмисне зависання (лише в стані DISARMED)\n"
            "  arm       — озброїти ровер (лише в стані DISARMED за напруги не нижче порога; лише в стендовому режимі, до появи пульта)\n"
            "  disarm    — вимкнути мотори й роззброїти (у будь-якому стані)\n"
-           "  drive <тяга> <поворот> — рух, значення від -1 до 1, діє 2 с (лише в стані ARMED і в стендовому режимі, до появи пульта)\n"
+           "  drive <тяга> <поворот> — рух, значення від -1 до 1, діє 2 с (лише в станах ARMED і OBSTACLE_HOLD і в стендовому режимі, до появи пульта)\n"
            "  light <head|red|green> <on|off> — світло: фари, червоний чи зелений задній ліхтар (DISARMED; в ARMED лише head)\n"
            "  beep <Гц> <мс> — сигнал зумера, цілі числа: 200–5000 Гц і 1–2000 мс (DISARMED і ARMED)\n"
            "  enc [reset] — знімок енкодерів коліс; reset обнуляє лічильники й відстань (у будь-якому стані)\n"
            "  pid [kp|ki|kd|ramp <число> | on | off | save | trace on|off] — регулятор швидкості бортів: стан, "
-           "зміна числа, увімкнення (DISARMED), збереження (не під час руху), трасування";
+           "зміна числа, увімкнення (DISARMED), збереження (не під час руху), трасування\n"
+           "  tof [reinit] — далекоміри: стан, відстані, сектори, поріг (у будь-якому стані); reinit повертає відмовивші далекоміри в роботу (лише DISARMED)";
 }
 
 const char *console_msg_unknown(void)
@@ -342,7 +351,7 @@ void console_fmt_denied(char *buf, size_t n, console_cmd_t cmd, app_state_t stat
     const char *rule;
     switch (cmd) {
     case CONSOLE_CMD_ARM:      rule = "Команда arm дозволена лише в стані DISARMED"; break;
-    case CONSOLE_CMD_DRIVE:    rule = "Команда drive дозволена лише в стані ARMED"; break;
+    case CONSOLE_CMD_DRIVE:    rule = "Команда drive дозволена лише в станах ARMED і OBSTACLE_HOLD"; break;
     case CONSOLE_CMD_REBOOT:   rule = "Команда reboot дозволена лише в станах DISARMED і BOOT"; break;
     case CONSOLE_CMD_WDT_TEST: rule = "Команда wdt-test дозволена лише в стані DISARMED"; break;
     case CONSOLE_CMD_LIGHT:    rule = "Команда light дозволена лише в станах DISARMED і ARMED"; break;
@@ -700,6 +709,67 @@ console_pid_t console_parse_pid(const char *line)
     r.form = CONSOLE_PID_SET;
     r.value = (float)v;
     return r;
+}
+
+console_tof_t console_parse_tof(const char *line)
+{
+    console_tof_t r = {CONSOLE_TOF_SHOW};
+    const char *rest;
+    first_word(line, &rest);
+    if (*rest == '\0') {
+        return r;
+    }
+    const char *p = rest;
+    while (*p != '\0' && !is_space(*p)) p++;
+    size_t n = (size_t)(p - rest);
+    while (is_space(*p)) p++;
+    bool more = (*p != '\0');
+    if (n == 6 && strncmp(rest, "reinit", n) == 0) {
+        r.form = more ? CONSOLE_TOF_ERR_EXTRA : CONSOLE_TOF_REINIT;
+        return r;
+    }
+    static const char *const thr_words[] = {"thr", "threshold", "limit", "mm", "set", "поріг"};
+    char c = rest[0];
+    bool thr = (c >= '0' && c <= '9') || c == '+' || c == '-' || c == '.';
+    for (size_t i = 0; i < sizeof(thr_words) / sizeof(thr_words[0]) && !thr; i++) {
+        thr = strlen(thr_words[i]) == n && strncmp(rest, thr_words[i], n) == 0;
+    }
+    r.form = thr ? CONSOLE_TOF_ERR_THRESHOLD : CONSOLE_TOF_ERR_WORD;
+    return r;
+}
+
+bool console_tof_allowed(console_tof_form_t form, app_state_t state)
+{
+    return form != CONSOLE_TOF_REINIT || state == APP_STATE_DISARMED;
+}
+
+#define TOF_USAGE " Допустимо: «tof» — показ далекомірів і секторів (у будь-якому стані); «tof reinit» — повторна " \
+                  "ініціалізація відмовивших далекомірів (лише в DISARMED). Поріг перешкоди з консолі не змінюється."
+
+void console_fmt_tof_error(char *buf, size_t n, const console_tof_t *p)
+{
+    switch (p->form) {
+    case CONSOLE_TOF_ERR_THRESHOLD:
+        snprintf(buf, n, "Команда tof: поріг перешкоди з консолі не змінюється — це виміряна величина, її змінює лише "
+                         "правка прошивки після запису в журнал вимірювань." TOF_USAGE);
+        return;
+    case CONSOLE_TOF_ERR_EXTRA:
+        snprintf(buf, n, "Команда tof: зайві слова." TOF_USAGE);
+        return;
+    case CONSOLE_TOF_ERR_WORD:
+        snprintf(buf, n, "Команда tof: невідоме слово." TOF_USAGE);
+        return;
+    default:
+        snprintf(buf, n, "Хибна форма команди tof." TOF_USAGE);
+        return;
+    }
+}
+
+void console_fmt_tof_denied(char *buf, size_t n, app_state_t state)
+{
+    snprintf(buf, n, "Стан %s: повторна ініціалізація далекомірів можлива лише в DISARMED — вона торкається ліній скидання "
+                     "датчиків на розширювачі портів, а під час руху чи аварії скидання заборонене (роззброїти: disarm).",
+             app_state_name(state));
 }
 
 bool console_pid_allowed(console_pid_form_t form, app_state_t state)

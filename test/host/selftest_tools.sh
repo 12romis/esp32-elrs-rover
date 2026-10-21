@@ -79,11 +79,36 @@ printf "$CAL" >"$TMP/cgood/components/encoders/include/encoders_calib.h"; printf
 printf "$CAL" | sed 's/WHEEL_DIAMETER_MM 44/WHEEL_DIAMETER_MM 43/' >"$TMP/cbad1/components/encoders/include/encoders_calib.h"; printf "$MEAS" >"$TMP/cbad1/docs/measured.md"
 printf "$CAL" >"$TMP/cbad2/components/encoders/include/encoders_calib.h"; printf "$MEAS" | grep -v WHEEL >"$TMP/cbad2/docs/measured.md"
 printf "$CAL" | sed 's/+1, -1, +1, -1/+1, +1, +1, -1/' >"$TMP/cbad3/components/encoders/include/encoders_calib.h"; printf "$MEAS" >"$TMP/cbad3/docs/measured.md"
+# phase6-tof: поріг перешкоди — окремий калібрувальний файл; його значення має збігатися з рядком TOF_OBSTACLE_MM у журналі
+TCAL='#define TOF_OBSTACLE_MM 170\n'
+TMEAS='| `TOF_OBSTACLE_MM` | **170** мм — рішення Розробника |\n'
+for d in cgood cbad1 cbad2 cbad3; do
+    mkdir -p "$TMP/$d/components/tof/include"
+    printf "$TCAL" >"$TMP/$d/components/tof/include/tof_calib.h"
+    printf "$TMEAS" >>"$TMP/$d/docs/measured.md"
+done
+mkdir -p "$TMP/cbad4/components/encoders/include" "$TMP/cbad4/components/tof/include" "$TMP/cbad4/docs" "$TMP/cbad5/components/encoders/include" "$TMP/cbad5/components/tof/include" "$TMP/cbad5/docs"
+for d in cbad4 cbad5; do
+    printf "$CAL" >"$TMP/$d/components/encoders/include/encoders_calib.h"; printf "$MEAS" >"$TMP/$d/docs/measured.md"
+done
+printf '#define TOF_OBSTACLE_MM 200\n' >"$TMP/cbad4/components/tof/include/tof_calib.h"; printf "$TMEAS" >>"$TMP/cbad4/docs/measured.md"      # значення з документа 02 §9, якого немає в журналі
+printf "$TCAL" >"$TMP/cbad5/components/tof/include/tof_calib.h"                                                                       # константа без рядка в журналі
+expect "check_calib ловить поріг перешкоди, що не збігається з журналом (200 проти 170)" nz "$HERE/check_calib.sh" "$TMP/cbad4"
+expect "check_calib ловить поріг перешкоди без рядка в журналі" nz "$HERE/check_calib.sh" "$TMP/cbad5"
 expect "check_calib ловить розходження значення (43 проти 44)" nz "$HERE/check_calib.sh" "$TMP/cbad1"
 expect "check_calib ловить константу без рядка в measured.md" nz "$HERE/check_calib.sh" "$TMP/cbad2"
 expect "check_calib ловить розходження знаків коліс" nz "$HERE/check_calib.sh" "$TMP/cbad3"
 expect "check_calib мовчить на узгоджених значеннях" 0 "$HERE/check_calib.sh" "$TMP/cgood"
 expect "check_calib мовчить на репозиторії" 0 "$HERE/check_calib.sh"
+
+# --- check_delays.sh (phase6-tof T10, T14): vTaskDelay(1) дозволено лише в очікуванні регістра tof_hal.c, у решті файлів — ні
+mkdir -p "$TMP/dgood/components/tof" "$TMP/dbad/components/tof" "$TMP/dbad2/components/tof"
+printf 'static void wait(void) { vTaskDelay(1); }\n' >"$TMP/dgood/components/tof/tof_hal.c"
+printf 'static void wait(void) { vTaskDelay(1); }\n' >"$TMP/dbad/components/tof/tof_other.c"
+printf 'static void wait(void) { vTaskDelay(pdMS_TO_TICKS(50)); }\n' >"$TMP/dbad2/components/tof/tof_core.c"
+expect "check_delays дозволяє очікування регістра в tof_hal.c" 0 "$HERE/check_delays.sh" "$TMP/dgood"
+expect "check_delays ловить vTaskDelay в іншому файлі tof" nz "$HERE/check_delays.sh" "$TMP/dbad"
+expect "check_delays ловить vTaskDelay у tof_core.c" nz "$HERE/check_delays.sh" "$TMP/dbad2"
 
 # --- check_power_limit.sh (phase5-pid T9, AC-09, AC-19): межа потужності — 750 проміле у drive_core.h, ніде іншим числом
 mkdir -p "$TMP/pgood/components/drive/include" "$TMP/pbad1/components/drive/include" "$TMP/pbad2/components/drive/include" \

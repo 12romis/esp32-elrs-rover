@@ -50,6 +50,10 @@ typedef struct {
 
 const char *app_state_name(app_state_t s);
 
+// «Ровер їде» (ADR-0004 phase6-tof): ARMED або OBSTACLE_HOLD. До цього предиката прив'язані відсічка по напрузі, втрата
+// звʼязку, роззброєння, регулятор і трасування; пряме порівняння з ARMED лишається лише для самого озброєння.
+bool app_state_is_driving(app_state_t s);
+
 // Чи є пара from->to у таблиці дозволених переходів.
 bool app_sm_is_allowed(app_state_t from, app_state_t to);
 
