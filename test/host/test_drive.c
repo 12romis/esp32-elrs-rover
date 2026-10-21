@@ -1845,6 +1845,24 @@ static void test_hold_parity_all_stops_off(void)
     }
 }
 
+static void test_hold_transitions_do_not_raise_stby(void)
+{
+    // ARMED без команди руху (STBY внизу) → зайнятий сектор → запит OBSTACLE_HOLD: перехід STBY не піднімає (review R1)
+    drive_ctl_t c;
+    drive_ctl_init(&c);
+    drive_ctl_out_t o = gt(&c, APP_STATE_ARMED, 1000, tv(1000, true, false), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_OBSTACLE_HOLD);
+    check_off(o.out);                                                         // STBY внизу
+    o = gt(&c, APP_STATE_OBSTACLE_HOLD, 1020, tv(1020, true, false), DRIVE_REQ_NONE, 0, 0);
+    check_off(o.out);                                                         // у OBSTACLE_HOLD без команди теж внизу
+    o = gt(&c, APP_STATE_OBSTACLE_HOLD, 1040, tv(1040, false, false), DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_ARMED);
+    check_off(o.out);                                                         // і при поверненні в ARMED
+    // свідома команда руху в OBSTACLE_HOLD STBY піднімає (рішення Розробника, spec A10)
+    o = gt(&c, APP_STATE_OBSTACLE_HOLD, 1060, tv(1060, true, false), DRIVE_REQ_DRIVE, -0.4f, 0.0f);
+    CHECK(o.accepted && o.out.stby == 1 && o.left_permille == -400);
+}
+
 int main(void)
 {
     test_pid_boards_text();
@@ -1913,5 +1931,6 @@ int main(void)
     test_hold_regulator_not_recaptured();
     test_hold_trace_frames();
     test_hold_parity_all_stops_off();
+    test_hold_transitions_do_not_raise_stby();
     return test_summary();
 }
