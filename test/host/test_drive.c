@@ -1863,6 +1863,30 @@ static void test_hold_transitions_do_not_raise_stby(void)
     CHECK(o.accepted && o.out.stby == 1 && o.left_permille == -400);
 }
 
+static void test_tof_clamped_flag_on_accepted_command(void)
+{
+    // AC-15: ознака «тягу обрізано» лише в такті прийнятої команди руху, коли обмеження змінило пару (review R2)
+    drive_ctl_t c;
+    drive_ctl_init(&c);
+    drive_ctl_out_t o = gt(&c, APP_STATE_OBSTACLE_HOLD, 1000, tv(1000, true, false), DRIVE_REQ_DRIVE, 0.5f, 0.0f);
+    CHECK(o.accepted && o.tof_clamped);                                   // вперед при зайнятому передньому
+    o = gt(&c, APP_STATE_OBSTACLE_HOLD, 1020, tv(1020, true, false), DRIVE_REQ_NONE, 0, 0);
+    CHECK(!o.tof_clamped);                                                // не повторюється на кожен такт вікна
+    o = gt(&c, APP_STATE_OBSTACLE_HOLD, 1040, tv(1040, true, false), DRIVE_REQ_DRIVE, -0.4f, 0.0f);
+    CHECK(o.accepted && !o.tof_clamped);                                  // назад дозволено
+    o = gt(&c, APP_STATE_OBSTACLE_HOLD, 1060, tv(1060, true, false), DRIVE_REQ_DRIVE, 0.0f, 0.4f);
+    CHECK(o.accepted && !o.tof_clamped);                                  // чистий поворот не змінюється
+    o = gt(&c, APP_STATE_OBSTACLE_HOLD, 1080, tv(1080, true, false), DRIVE_REQ_DRIVE, 0.5f, 0.4f);
+    CHECK(o.accepted && o.tof_clamped);                                   // тяга обрізана, поворот лишився
+    o = gt(&c, APP_STATE_ARMED, 2000, tv(2000, false, false), DRIVE_REQ_DRIVE, 0.5f, 0.0f);
+    CHECK(o.accepted && !o.tof_clamped);                                  // сектори вільні
+    drive_ctl_init(&c);
+    o = gt(&c, APP_STATE_ARMED, 3000, tv(3000, false, true), DRIVE_REQ_DRIVE, -0.5f, 0.0f);
+    CHECK(o.accepted && o.tof_clamped);                                   // назад при зайнятому задньому
+    o = gt(&c, APP_STATE_DISARMED, 3020, tv(3020, true, true), DRIVE_REQ_DRIVE, 0.5f, 0.0f);
+    CHECK(!o.accepted && !o.tof_clamped);                                 // відхилену команду не позначаємо
+}
+
 int main(void)
 {
     test_pid_boards_text();
@@ -1932,5 +1956,6 @@ int main(void)
     test_hold_trace_frames();
     test_hold_parity_all_stops_off();
     test_hold_transitions_do_not_raise_stby();
+    test_tof_clamped_flag_on_accepted_command();
     return test_summary();
 }

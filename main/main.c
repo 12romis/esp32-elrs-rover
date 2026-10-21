@@ -49,7 +49,12 @@ static bool motor_cmd(console_motor_cmd_t cmd, float throttle, float steer, cons
         drive_disarm_text(r.state_before, r.has_state_request, r.state_request, r.stop, r.failsafe_cause, r.fsx,
                           r.switch_arm, reply->text, sizeof(reply->text));
     } else {
-        reply->text[0] = '\0';
+        if (r.tof_clamped) {   // AC-15: один раз на прийняту команду
+            snprintf(reply->text, sizeof(reply->text),
+                     "Напрямок заблоковано перешкодою: тягу в цей бік обнулено, поворот і протилежний бік дозволені.");
+        } else {
+            reply->text[0] = '\0';
+        }
     }
     return true;
 }

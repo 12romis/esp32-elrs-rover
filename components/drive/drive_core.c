@@ -522,6 +522,9 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
         } else {
             float l, r;
             drive_mix(in->req.throttle, in->req.steer, &l, &r);
+            float cl, cr;
+            tof_limit_sides(l, r, c->occ_front, c->occ_rear, &cl, &cr);
+            o->tof_clamped = (cl != l || cr != r);   // консоль один раз пояснить, що напрямок заблоковано перешкодою
             c->outputs = drive_outputs_from(l, r);
             c->left_permille = signed_pm(c->outputs.left);
             c->right_permille = signed_pm(c->outputs.right);

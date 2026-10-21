@@ -40,6 +40,7 @@ typedef struct {
     app_failsafe_cause_t failsafe_cause;  // причина поточного FAILSAFE (для пояснення disarm)
     drive_fsx_t fsx;                      // чого бракує для виходу з FAILSAFE
     bool switch_arm;                      // тумблер пульта в ARM
+    bool tof_clamped;                     // прийнята команда руху обрізана за далекомірами (spec AC-15)
 } drive_reply_t;
 
 // Лінії моторів → вимкнений стан (STBY низька, ШІМ 0, DIR 0/0). Перший виклик після app_state_hal_init.

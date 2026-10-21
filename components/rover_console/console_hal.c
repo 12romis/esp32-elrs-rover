@@ -171,7 +171,7 @@ static void do_motor(console_cmd_t cmd, const char *line)
         say("Керування не відповіло — команду не прийнято.");
         return;
     }
-    char buf[320];
+    char buf[480];   // «Прийнято …» ≈ 150 байтів + пояснення про перешкоду ≈ 180 байтів (UTF-8)
     if (!r.accepted) {
         snprintf(buf, sizeof(buf), "Відхилено: %s.", r.text);
     } else if (cmd == CONSOLE_CMD_ARM) {
@@ -182,7 +182,10 @@ static void do_motor(console_cmd_t cmd, const char *line)
         char l[16], rr[16];
         console_fmt_permille(l, sizeof(l), r.left_permille);
         console_fmt_permille(rr, sizeof(rr), r.right_permille);
-        snprintf(buf, sizeof(buf), "Прийнято: ліве %s, праве %s (діє 2 с, повторіть команду, щоб їхати далі).", l, rr);
+        int w = snprintf(buf, sizeof(buf), "Прийнято: ліве %s, праве %s (діє 2 с, повторіть команду, щоб їхати далі).", l, rr);
+        if (r.text[0] != '\0' && w > 0 && (size_t)w < sizeof(buf)) {
+            snprintf(buf + w, sizeof(buf) - (size_t)w, " %s", r.text);
+        }
     }
     say(buf);
 }

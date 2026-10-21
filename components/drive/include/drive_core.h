@@ -185,6 +185,7 @@ typedef struct {
     uint32_t events;             // DRIVE_EVT_* для журналу
     // --- phase5-pid ---
     pid_side_view_t pid_view[2]; // стан бортів для показу `pid` і кадру трасування
+    bool tof_clamped;            // у такті прийнятої команди руху тягу в бік зайнятого сектору обрізано (spec AC-15)
     uint8_t hold_sector;         // для DRIVE_EVT_HOLD_ENTER: tof_sector_t зайнятого сектору
     uint16_t hold_mm;            // його відстань
     int8_t hold_nearest;         // датчик з найменшою відстанню (tof_id_t) або −1

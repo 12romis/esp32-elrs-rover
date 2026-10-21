@@ -414,7 +414,8 @@ static void control_task(void *arg)
                                       .right_permille = out.right_permille,
                                       .failsafe_cause = in.failsafe_cause,
                                       .fsx = fsx,
-                                      .switch_arm = intent.sw == CRSF_SW_ARM};
+                                      .switch_arm = intent.sw == CRSF_SW_ARM,
+                                      .tof_clamped = out.accepted && out.tof_clamped};
             s_reply_seq = seq;
             xSemaphoreGive(s_reply_sem);
         }
