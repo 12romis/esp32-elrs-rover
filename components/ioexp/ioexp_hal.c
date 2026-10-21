@@ -100,6 +100,29 @@ bool ioexp_hal_bit(int bit)
 
 static ioexp_wr_t apply_locked(uint8_t desired_light_bits);
 
+// Спільна обробка результату запису байта для обох шляхів (світло і лінії скидання, review R5): лічильник невдач, скидання
+// шини, повідомлення про збій і відновлення, рівень журналу драйвера шини. Викликається під внутрішнім мʼютексом.
+static void after_write(bool ack, ioexp_event_t ev)
+{
+    if (ack) {
+        s_last_ok_ms = now_ms();
+        s_fail_streak = 0;
+    } else if (++s_fail_streak % RESET_EVERY_FAILS == 0) {
+        // шина могла «зависнути» після втрати живлення розширювача: скидаємо її стан і пробуємо далі
+        esp_err_t rst = i2c_bus_reset();
+        if (s_fail_streak == RESET_EVERY_FAILS || s_fail_streak % 600 == 0) {  // не частіше разу на хвилину
+            ESP_LOGW(TAG, "%d невдач підряд — скидання шини: %s", s_fail_streak, esp_err_to_name(rst));
+        }
+    }
+    if (ev == IOEXP_EVT_FAULT) {
+        esp_log_level_set("i2c.master", ESP_LOG_NONE);  // драйвер пише рядок на кожну невдалу транзакцію: ~10 на секунду, доки шина мертва
+        ESP_LOGW(TAG, "шина не підтвердила запис — світло і лінії скидання лишаються в останньому підтвердженому стані, автоматика повторює");
+    } else if (ev == IOEXP_EVT_RECOVERED) {
+        esp_log_level_set("i2c.master", ESP_LOG_ERROR);
+        ESP_LOGI(TAG, "шина відновилась — світло й лінії скидання приведено до бажаного стану");
+    }
+}
+
 ioexp_wr_t ioexp_hal_apply(uint8_t desired_light_bits)
 {
     if (!ioexp_available(&s_e)) {
@@ -127,10 +150,9 @@ ioexp_wr_t ioexp_hal_xshut(int bit, bool high)
         uint8_t byte;
         if (ioexp_prepare(&s_e, (uint8_t)(s_e.shadow & IOEXP_LIGHT_MASK), &byte)) {
             bool ack = write_byte(byte);
-            ioexp_commit(&s_e, byte, ack);
+            ioexp_event_t ev = ioexp_commit(&s_e, byte, ack);
+            after_write(ack, ev);
             if (ack) {
-                s_last_ok_ms = now_ms();
-                s_fail_streak = 0;
                 r = IOEXP_WR_OK;
             } else {
                 ioexp_xshut_revert(&s_e);   // розряд лишається таким, яким підтверджений
@@ -153,22 +175,6 @@ static ioexp_wr_t apply_locked(uint8_t desired_light_bits)
     }
     bool ack = write_byte(byte);
     ioexp_event_t ev = ioexp_commit(&s_e, byte, ack);
-    if (ack) {
-        s_last_ok_ms = now_ms();
-        s_fail_streak = 0;
-    } else if (++s_fail_streak % RESET_EVERY_FAILS == 0) {
-        // шина могла «зависнути» після втрати живлення розширювача: скидаємо її стан і пробуємо далі
-        esp_err_t rst = i2c_bus_reset();
-        if (s_fail_streak == RESET_EVERY_FAILS || s_fail_streak % 600 == 0) {  // не частіше разу на хвилину
-            ESP_LOGW(TAG, "%d невдач підряд — скидання шини: %s", s_fail_streak, esp_err_to_name(rst));
-        }
-    }
-    if (ev == IOEXP_EVT_FAULT) {
-        esp_log_level_set("i2c.master", ESP_LOG_NONE);  // драйвер пише рядок на кожну невдалу транзакцію: ~10 на секунду, доки шина мертва
-        ESP_LOGW(TAG, "шина не підтвердила запис — світло лишається в останньому підтвердженому стані, автоматика повторює");
-    } else if (ev == IOEXP_EVT_RECOVERED) {
-        esp_log_level_set("i2c.master", ESP_LOG_ERROR);
-        ESP_LOGI(TAG, "шина відновилась — світло приведено до бажаного стану");
-    }
+    after_write(ack, ev);
     return ack ? IOEXP_WR_OK : IOEXP_WR_FAILED;
 }

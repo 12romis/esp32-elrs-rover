@@ -57,6 +57,7 @@ static const uint8_t NEW_ADDR[TOF_SENSORS] = {0x30, 0x31, 0x32, 0x33};
 static const char *const PLACE[TOF_SENSORS] = {"U7 (ліворуч-вперед)", "U8 (вперед)", "U9 (праворуч-вперед)", "U10 (назад)"};
 
 static vl53_t s_vl[TOF_SENSORS];
+static bool s_xshut_stuck;   // лінія скидання невдалого датчика лишилась піднятою: піднімати інші небезпечно (review R7)
 
 // ───────── регістровий доступ під мʼютексом шини ─────────
 
@@ -328,7 +329,13 @@ static bool bring_up(tof_id_t id)
     bool ok = vl_attach(d, VL_DEFAULT_ADDR) && vl_init(d) && vl_set_address(d, NEW_ADDR[id]) && vl_start_continuous(d);
     if (!ok) {
         vl_detach(d);
-        ioexp_hal_xshut(XSHUT_BIT[id], false);
+        // Лінію скидання опускаємо з однією повторною спробою: якщо вона лишиться піднятою, напівпроініціалізований датчик
+        // стоїть на 0x29, і наступний піднятий датчик зіткнувся б з ним (review R7) — тоді решту не піднімаємо.
+        if (ioexp_hal_xshut(XSHUT_BIT[id], false) != IOEXP_WR_OK && ioexp_hal_xshut(XSHUT_BIT[id], false) != IOEXP_WR_OK) {
+            s_xshut_stuck = true;
+            ESP_LOGW(TAG, "далекомір %s: лінію скидання не опущено — решту датчиків не піднімаємо, щоб не зіткнутись на 0x29",
+                     PLACE[id]);
+        }
         return false;
     }
     d->tmo_ms = LOOP_TIMEOUT_MS;
@@ -340,7 +347,8 @@ static bool bring_up(tof_id_t id)
 #define SENSORS_STACK 4096
 #define SENSORS_PRIORITY 3          // документ 02 §6.1: sensors, prio 3, core 0, 50 мс
 #define SENSORS_CORE 0
-#define REINIT_WAIT_MS 3000         // скільки консоль чекає на завершення повторної ініціалізації
+#define REINIT_WAIT_MS 3500         // скільки консоль чекає на завершення повторної ініціалізації (бюджет 3 с + запас)
+#define REINIT_BUDGET_MS 1500       // новий датчик у reinit не починаємо, якщо минуло більше: найгірший датчик ≈ 1.5 с (review R6)
 #define BUS_RESET_EVERY_CYCLES 5    // після стількох циклів, у яких не відповів жоден датчик, скидаємо шину
 
 static tof_core_t s_core;           // лише задача sensors
@@ -424,7 +432,7 @@ static void enumerate(void)
     } else {
         int ok = 0;
         for (int i = 0; i < TOF_SENSORS; i++) {
-            if (bring_up((tof_id_t)i)) {
+            if (!s_xshut_stuck && bring_up((tof_id_t)i)) {
                 tof_core_start(&s_core, (tof_id_t)i, now_ms(), &ev);
                 ESP_LOGI(TAG, "далекомір %s: працює, адреса 0x%02X", PLACE[i], s_vl[i].addr);
                 ok++;
@@ -471,6 +479,7 @@ static void do_reinit(void)
             ioexp_hal_xshut(XSHUT_BIT[failed[k]], false);
         }
         bool aborted = false;
+        uint32_t t_start = now_ms();
         for (int k = 0; k < nf && !aborted; k++) {
             tof_events_t ev = {0};
             int i = failed[k];
@@ -478,13 +487,17 @@ static void do_reinit(void)
                 aborted = true;
                 break;
             }
-            bool ok = bring_up((tof_id_t)i);
+            bool ok = false;
+            bool skipped = s_xshut_stuck || (uint32_t)(now_ms() - t_start) > REINIT_BUDGET_MS;
+            if (!skipped) {
+                ok = bring_up((tof_id_t)i);
+            }
             if (ok) {
                 tof_core_start(&s_core, (tof_id_t)i, now_ms(), &ev);
             }
             log_events(&ev);
             int w = snprintf(s_reinit_text + pos, sizeof(s_reinit_text) - pos, "%s%s: %s", k ? "\n" : "", PLACE[i],
-                             ok ? "повернуто в роботу" : "досі відмова (не відповідає)");
+                             ok ? "повернуто в роботу" : (skipped ? "не встигли за 3 с або лінію скидання не опущено — повторіть команду" : "досі відмова (не відповідає)"));
             if (w > 0 && (size_t)w < sizeof(s_reinit_text) - pos) pos += (size_t)w;
         }
         if (aborted) {
