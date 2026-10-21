@@ -610,11 +610,12 @@ void console_fmt_ui_denied(char *buf, size_t n, ui_result_t r, app_state_t state
 }
 
 void console_fmt_ui_status(char *buf, size_t n, bool expander_ok, bool head, bool red, bool green, bool rear_auto,
-                           bool indicator_red, bool buzzer_on, uint32_t remaining_ms)
+                           ui_indicator_t indicator, bool buzzer_on, uint32_t remaining_ms)
 {
+    const char *colour = indicator == UI_IND_RED ? "червоний" : (indicator == UI_IND_YELLOW ? "жовтий" : "вимкнений");
     snprintf(buf, n, "розширювач: %s; світло: head %s, red %s, green %s; задні ліхтарі: керує %s; індикатор плати: %s; зумер: %s, залишок: %u мс",
              expander_ok ? "доступний" : "недоступний", head ? "ввімкнено" : "вимкнено", red ? "ввімкнено" : "вимкнено",
-             green ? "ввімкнено" : "вимкнено", rear_auto ? "рух" : "вручну", indicator_red ? "червоний" : "вимкнений",
+             green ? "ввімкнено" : "вимкнено", rear_auto ? "рух" : "вручну", colour,
              buzzer_on ? "звучить" : "мовчить", (unsigned)remaining_ms);
 }
 

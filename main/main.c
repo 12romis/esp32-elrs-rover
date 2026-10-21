@@ -15,6 +15,7 @@
 #include "pid_hal.h"
 #include "esp_log.h"
 #include "storage_hal.h"
+#include "telemetry_hal.h"
 #include "tof_hal.h"
 #include "ui_hal.h"
 #include "watchdog_hal.h"
@@ -105,7 +106,7 @@ static void ui_status(console_ui_status_t *s)
     ui_hal_status_t u;
     ui_hal_status(&u);
     *s = (console_ui_status_t){.expander_ok = u.expander_ok, .head = u.head, .red = u.red, .green = u.green,
-                               .rear_auto = u.rear_auto, .indicator_red = u.indicator_red, .buzzer_on = u.buzzer_on,
+                               .rear_auto = u.rear_auto, .indicator = u.indicator, .buzzer_on = u.buzzer_on,
                                .remaining_ms = u.remaining_ms};
 }
 
@@ -140,6 +141,7 @@ static const console_ops_t s_console_ops = {
     .beep_cmd = beep_cmd,
     .ui_status = ui_status,
     .rc_status = rc_status,
+    .step_status = telemetry_step_text,
     .enc_snapshot = encoders_snapshot_text,
     .enc_reset = encoders_reset_text,
     .enc_status = encoders_status_text,
@@ -187,6 +189,11 @@ void app_main(void)
     esp_err_t rcv = crsf_start();
     if (rcv != ESP_OK) {
         ESP_LOGW(TAG, "приймач CRSF не стартував (%s) — стендовий режим, керування лише з консолі", esp_err_to_name(rcv));
+    }
+    // Телеметрія (phase7-telemetry, ADR-0001): задача раз на 200 мс шле напругу на пульт; збій лише вимикає її, ровер працює далі.
+    esp_err_t tel = telemetry_start();
+    if (tel != ESP_OK) {
+        ESP_LOGW(TAG, "телеметрія не стартувала (%s) — пульт не бачитиме напруги, ровер працює далі", esp_err_to_name(tel));
     }
     esp_err_t ui = ui_start();  // ui лише читає стан і борти, мотори від неї не залежать
     storage_status_t storage = storage_init();

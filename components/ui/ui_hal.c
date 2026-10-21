@@ -36,7 +36,7 @@ static bool s_buzzer_on;
 static uint32_t s_buzzer_hz;
 static bool s_running;
 static bool s_indicator_ok;
-static bool s_indicator_red;
+static ui_indicator_t s_indicator_col = UI_IND_OFF;   // колір, що підтверджено передачею
 static rmt_channel_handle_t s_rmt;
 static rmt_encoder_handle_t s_rmt_enc;
 
@@ -137,13 +137,15 @@ static bool indicator_send(uint8_t g, uint8_t r, uint8_t b)
 
 static void indicator_set(ui_indicator_t colour)
 {
-    bool red = colour == UI_IND_RED;
-    if (!s_indicator_ok || red == s_indicator_red) {
+    if (!s_indicator_ok || colour == s_indicator_col) {
         return;
     }
-    // GRB: червоний — (0, рівень, 0); вимкнено — (0, 0, 0). Невдала передача повториться на наступному такті.
-    if (indicator_send(0, red ? UI_INDICATOR_LEVEL : 0, 0)) {
-        s_indicator_red = red;
+    // GRB: червоний — (0, рівень, 0); жовтий — червоний і зелений разом (рівень, рівень, 0), phase7-telemetry A8; вимкнено — (0, 0, 0).
+    // Невдала передача повториться на наступному такті.
+    uint8_t g = colour == UI_IND_YELLOW ? UI_INDICATOR_LEVEL : 0;
+    uint8_t r = (colour == UI_IND_RED || colour == UI_IND_YELLOW) ? UI_INDICATOR_LEVEL : 0;
+    if (indicator_send(g, r, 0)) {
+        s_indicator_col = colour;
     }
 }
 
@@ -227,7 +229,7 @@ void ui_hal_status(ui_hal_status_t *s)
     s->head = ioexp_hal_bit(IOEXP_BIT_LIGHT_EN);  // останній підтверджений запис (AC-13, AC-15); недоступний — вимкнено
     s->red = ioexp_hal_bit(IOEXP_BIT_STOP_RED);
     s->green = ioexp_hal_bit(IOEXP_BIT_STOP_GREEN);
-    s->indicator_red = s_core.out.indicator == UI_IND_RED;
+    s->indicator = s_core.out.indicator;
     s->buzzer_on = s_core.out.buzzer_on;
     s->remaining_ms = ui_core_remaining_ms(&s_core, now_ms());
     xSemaphoreGive(s_mutex);
@@ -251,6 +253,8 @@ static void run_tick(void)
         .left_permille = ds.left_permille,
         .right_permille = ds.right_permille,
         .expander_ok = ioexp_hal_available(),
+        .front_occupied = ds.occ_front,   // прапорці секторів із control (ADR-0002); блимання лише в OBSTACLE_HOLD
+        .rear_occupied = ds.occ_rear,
     };
     ui_out_t out;
     ui_core_tick(&s_core, &in, &out);

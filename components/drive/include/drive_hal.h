@@ -25,6 +25,9 @@ typedef struct {
     drive_block_t arm_block;  // що блокує озброєння з пульта зараз (DRIVE_BLOCK_NONE — можна)
     app_failsafe_cause_t failsafe_cause;
     drive_fsx_t fsx;          // чого бракує для виходу з FAILSAFE
+    // --- phase7-telemetry (ADR-0002): сектори, зайняті в останньому такті control (копія ctl.occ_* без умови стану) ---
+    bool occ_front;
+    bool occ_rear;
 } drive_status_t;
 
 typedef struct {

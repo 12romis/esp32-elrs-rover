@@ -17,6 +17,10 @@
 #define UI_FAILSAFE_BEEP_MS 200         // писк у FAILSAFE
 #define UI_FAILSAFE_PERIOD_MS 2000      // період писку, відлік від входу
 #define UI_FAILSAFE_BLINK_HALF_MS 500   // півперіоду блимання задніх ліхтарів
+#define UI_HOLD_BLINK_HALF_MS 250       // півперіод блимання в OBSTACLE_HOLD (phase7-telemetry A9); при кроці ui 100 мс — 200 або 300 мс
+#define UI_DBL_BEEP_MS 100              // подвійний біп утримання (phase7-telemetry A5): звук
+#define UI_DBL_GAP_MS 100               // пауза між двома звуками
+#define UI_DBL_TOTAL_MS (2 * UI_DBL_BEEP_MS + UI_DBL_GAP_MS)
 
 typedef enum { UI_CH_HEAD, UI_CH_RED, UI_CH_GREEN, UI_CH_COUNT } ui_channel_t;
 
@@ -29,7 +33,7 @@ typedef enum {
     UI_DENY_RANGE        // beep поза діапазоном зумера
 } ui_result_t;
 
-typedef enum { UI_IND_OFF, UI_IND_RED } ui_indicator_t;
+typedef enum { UI_IND_OFF, UI_IND_RED, UI_IND_YELLOW } ui_indicator_t;   // жовтий — OBSTACLE_HOLD (phase7-telemetry A8)
 typedef enum { UI_REAR_MANUAL, UI_REAR_AUTO } ui_rear_mode_t;
 
 // Дозволи (єдина таблиця; console_core її викликає).
@@ -43,6 +47,8 @@ typedef struct {
     int16_t left_permille;    // застосовані значення бортів
     int16_t right_permille;
     bool expander_ok;         // розширювач доступний
+    bool front_occupied;      // передній сектор зайнятий (прапорці control; блимання лише в OBSTACLE_HOLD)
+    bool rear_occupied;       // задній сектор зайнятий
 } ui_in_t;
 
 typedef struct {
@@ -58,11 +64,13 @@ typedef struct {
     app_state_t last_state;
     bool failsafe;
     uint32_t fs_entry_ms;
+    uint32_t hold_start_ms;           // вхід в OBSTACLE_HOLD: початок відліку фази блимання
     uint32_t fs_periods_done;         // скільки періодичних сигналів FAILSAFE вже подано
     uint32_t signal_hz;               // частота автосигналів; 0 — не задана (OQ-2), автосигналів немає
     struct {
         bool active;
-        bool is_signal;               // автоматичний сигнал (переходу чи FAILSAFE)
+        bool is_signal;               // автоматичний сигнал (переходу, FAILSAFE, подвійний біп)
+        bool dbl;                     // подвійний біп: звук, пауза, звук від start_ms (dur_ms = UI_DBL_TOTAL_MS)
         uint32_t hz, start_ms, dur_ms;
     } buz;
     struct {

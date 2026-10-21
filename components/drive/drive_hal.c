@@ -16,6 +16,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "pid_hal.h"
+#include "telemetry_hal.h"
 #include "tof_hal.h"
 
 #define CONTROL_STACK 4096
@@ -303,6 +304,7 @@ static void control_task(void *arg)
     uint32_t lat_start_ms = now_ms();
     TickType_t last = xTaskGetTickCount();
     for (;;) {
+        int64_t step_t0_us = esp_timer_get_time();   // початок кроку після пробудження (phase7-telemetry, ADR-0003)
         queued_req_t item;
         drive_ctl_in_t in = {0};
         bool have_req = false;
@@ -395,6 +397,8 @@ static void control_task(void *arg)
         s_status.arm_block = blk;
         s_status.failsafe_cause = in.failsafe_cause;
         s_status.fsx = fsx;
+        s_status.occ_front = ctl.occ_front;
+        s_status.occ_rear = ctl.occ_rear;
         if (out.stop != DRIVE_STOP_NONE && !(out.stop == DRIVE_STOP_DISARM && !app_state_is_driving(in.state))) {
             s_status.last_stop = out.stop;  // зупинка справжня: запам'ятати для status (AC-12)
             s_status.last_stop_min_mv = out.min_mv;
@@ -423,6 +427,8 @@ static void control_task(void *arg)
         log_stop(&out, &in, now);  // лог — після вимкнення виходів і запиту стану
         log_events(&out, &in, now);
 
+        int64_t step_us = esp_timer_get_time() - step_t0_us;   // тривалість кроку без очікування наступного періоду
+        telemetry_step_record(step_us > 0 ? (uint32_t)step_us : 0u, CONTROL_PERIOD_MS * 1000u);
         esp_task_wdt_reset();
         vTaskDelayUntil(&last, pdMS_TO_TICKS(CONTROL_PERIOD_MS));
     }

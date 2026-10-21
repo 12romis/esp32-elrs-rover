@@ -67,10 +67,25 @@ static bool sounding(const ui_core_t *u, uint32_t now_ms)
     return u->buz.active && (uint32_t)(now_ms - u->buz.start_ms) < u->buz.dur_ms;
 }
 
+// Чи зараз іде звук (у подвійному біпі між двома звуками пауза).
+static bool sound_on(const ui_core_t *u, uint32_t now_ms)
+{
+    if (!sounding(u, now_ms)) {
+        return false;
+    }
+    if (u->buz.dbl) {
+        // Сегменти звук / пауза / звук з допуском півкроку: такт ui може зсунутися на кілька мс (sensors витісняє ui).
+        uint32_t seg = ((uint32_t)(now_ms - u->buz.start_ms) + UI_DBL_BEEP_MS / 2u) / UI_DBL_BEEP_MS;
+        return seg == 0 || seg == 2;
+    }
+    return true;
+}
+
 static void start_sound(ui_core_t *u, uint32_t hz, uint32_t dur_ms, uint32_t now_ms, bool is_signal)
 {
     u->buz.active = true;
     u->buz.is_signal = is_signal;
+    u->buz.dbl = false;
     u->buz.hz = hz;
     u->buz.start_ms = now_ms;
     u->buz.dur_ms = dur_ms;
@@ -113,9 +128,19 @@ uint32_t ui_core_remaining_ms(const ui_core_t *u, uint32_t now_ms)
 
 // ---------- такт ----------
 
-// Сигнал переходу: DISARMED, FAILSAFE і вхід у рух зі стану не-руху (ADR-0004 phase6-tof). Перехід між ARMED і
-// OBSTACLE_HOLD — не вхід у рух, тож тихий. «Вхід у рух» — за станом, який бачить ui (опитування раз на 100 мс):
-// озброєння біля вже зайнятого сектору виглядає як DISARMED → OBSTACLE_HOLD і є озброєнням.
+// Подвійний біп (A5, A7): не стартує, поки звучить попередній; сигнали DISARMED і FAILSAFE замінюють його (start_sound).
+static void start_double(ui_core_t *u, uint32_t now_ms)
+{
+    if (u->buz.active && u->buz.dbl && sounding(u, now_ms)) {
+        return;
+    }
+    start_sound(u, u->signal_hz, UI_DBL_TOTAL_MS, now_ms, true);
+    u->buz.dbl = true;
+}
+
+// Одинарний сигнал переходу: DISARMED, FAILSAFE і вхід у рух зі стану не-руху. Входи в OBSTACLE_HOLD і вихід у ARMED
+// обробляє подвійний біп (ADR-0002 phase7-telemetry, що замінює «тихий» перехід з ADR-0004 phase6-tof); тут лишається
+// озброєння з DISARMED в ARMED. «Вхід у рух» — за станом, який бачить ui (опитування раз на 100 мс).
 static bool is_signal_state(app_state_t s, bool entering_motion)
 {
     return s == APP_STATE_DISARMED || s == APP_STATE_FAILSAFE || entering_motion;
@@ -127,6 +152,7 @@ void ui_core_tick(ui_core_t *u, const ui_in_t *in, ui_out_t *out)
         return;
     }
     bool changed = !u->have_last || in->state != u->last_state;
+    bool was_hold = u->have_last && u->last_state == APP_STATE_OBSTACLE_HOLD;
     bool driving = app_state_is_driving(in->state);
     bool entering_motion = changed && driving && !(u->have_last && app_state_is_driving(u->last_state));
     if (changed) {
@@ -142,6 +168,9 @@ void ui_core_tick(ui_core_t *u, const ui_in_t *in, ui_out_t *out)
         }
         // Відлік FAILSAFE (блимання, періодичний писк) живе лише у FAILSAFE; з фази 3 з нього є вихід у DISARMED
         // (ADR-0002 phase3-crsf), тож прапорець скидається при будь-якій зміні стану на інший.
+        if (in->state == APP_STATE_OBSTACLE_HOLD) {
+            u->hold_start_ms = in->now_ms;   // одна фаза блимання на обидва боки
+        }
         u->failsafe = (in->state == APP_STATE_FAILSAFE);
         if (u->failsafe) {
             u->fs_entry_ms = in->now_ms;
@@ -161,7 +190,11 @@ void ui_core_tick(ui_core_t *u, const ui_in_t *in, ui_out_t *out)
 
     // Автоматичні звуки спершу (вони замінюють усе, що звучить), потім завершення звуку й слот.
     if (u->signal_hz != 0) {
-        if (changed && is_signal_state(in->state, entering_motion)) {
+        if (changed && in->state == APP_STATE_OBSTACLE_HOLD) {
+            start_double(u, in->now_ms);    // вхід в утримання (зокрема видимий з DISARMED) замість сигналу озброєння
+        } else if (changed && was_hold && in->state == APP_STATE_ARMED) {
+            start_double(u, in->now_ms);    // вихід в ARMED; в DISARMED і FAILSAFE лунають їхні власні сигнали
+        } else if (changed && is_signal_state(in->state, entering_motion)) {
             start_sound(u, u->signal_hz, UI_SIGNAL_TRANSITION_MS, in->now_ms, true);
         }
         if (u->failsafe) {
@@ -196,9 +229,21 @@ void ui_core_tick(ui_core_t *u, const ui_in_t *in, ui_out_t *out)
             o.green = u->manual[UI_CH_GREEN];
         }
     }
-    o.indicator = in->state == APP_STATE_FAILSAFE ? UI_IND_RED : UI_IND_OFF;
-    o.buzzer_on = u->buz.active;
-    o.buzzer_hz = u->buz.active ? u->buz.hz : 0;
+    if (in->state == APP_STATE_OBSTACLE_HOLD && in->expander_ok) {
+        // Попередження про бік перешкоди (A9–A11): блимання перекриває вихід, ручний стан фар не змінюється й повертається сам.
+        bool phase_on = (((uint32_t)(in->now_ms - u->hold_start_ms)) / UI_HOLD_BLINK_HALF_MS) % 2u == 0u;
+        if (in->front_occupied) {
+            o.head = phase_on;
+        }
+        if (in->rear_occupied) {
+            o.red = o.red && phase_on;
+            o.green = o.green && phase_on;
+        }
+    }
+    o.indicator = in->state == APP_STATE_FAILSAFE ? UI_IND_RED : (in->state == APP_STATE_OBSTACLE_HOLD ? UI_IND_YELLOW : UI_IND_OFF);
+    bool on = u->buz.active && sound_on(u, in->now_ms);
+    o.buzzer_on = on;
+    o.buzzer_hz = on ? u->buz.hz : 0;
     u->out = o;
     if (out != NULL) {
         *out = o;
