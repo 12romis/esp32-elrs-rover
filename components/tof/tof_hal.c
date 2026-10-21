@@ -4,11 +4,16 @@
 #include "tof_hal.h"
 
 #include "board_pins.h"
+#include <stdio.h>
+#include <string.h>
+
+#include "app_state_hal.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "i2c_bus_hal.h"
 #include "ioexp_hal.h"
@@ -259,7 +264,7 @@ typedef enum { VL_POLL_ERR, VL_POLL_NOT_READY, VL_POLL_OK } vl_poll_t;
 
 // Неблокувальне читання (T11): готового відліку немає — NOT_READY; відлік прочитано й переривання скинуто — OK.
 // Значення ≥ 8190 мм — «поза діапазоном»; tof_core сам розрізняє.
-__attribute__((unused)) static vl_poll_t vl_poll(vl53_t *d, uint16_t *mm)
+static vl_poll_t vl_poll(vl53_t *d, uint16_t *mm)
 {
     uint8_t st;
     if (!rd8(d, REG_RESULT_INTERRUPT_STATUS, &st)) {
@@ -330,24 +335,258 @@ static bool bring_up(tof_id_t id)
     return true;
 }
 
-esp_err_t tof_start(void)
+// ───────── задача sensors, знімок, повторна ініціалізація (ADR-0003) ─────────
+
+#define SENSORS_STACK 4096
+#define SENSORS_PRIORITY 3          // документ 02 §6.1: sensors, prio 3, core 0, 50 мс
+#define SENSORS_CORE 0
+#define REINIT_WAIT_MS 3000         // скільки консоль чекає на завершення повторної ініціалізації
+#define BUS_RESET_EVERY_CYCLES 5    // після стількох циклів, у яких не відповів жоден датчик, скидаємо шину
+
+static tof_core_t s_core;           // лише задача sensors
+static tof_view_t s_view;           // знімок для control і консолі
+static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
+static uint32_t s_seq;
+static SemaphoreHandle_t s_reinit_done;
+static volatile bool s_reinit_req;
+static char s_reinit_text[480];
+static bool s_started;
+static bool s_prev_guarded[TOF_SECTORS];
+static bool s_prev_protection;
+
+static uint32_t now_ms(void)
 {
-    int ok = 0;
-    if (!ioexp_hal_available()) {
-        ESP_LOGW(TAG, "розширювач недоступний — лінії скидання далекомірів піднімати нікуди: усі чотири у відмові, "
-                      "захист від зіткнень вимкнено");
-        return ESP_OK;
-    }
+    return (uint32_t)(esp_timer_get_time() / 1000);
+}
+
+static void publish(void)
+{
+    tof_view_t v;
+    tof_core_view(&s_core, &v);
+    v.valid = true;
+    v.t_ms = now_ms();
+    portENTER_CRITICAL(&s_mux);
+    v.seq = ++s_seq;
+    s_view = v;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+void tof_snapshot_get(tof_view_t *out)
+{
+    portENTER_CRITICAL(&s_mux);
+    *out = s_view;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+static bool timed_state(tof_state_t s)
+{
+    return s == TOF_S_NOT_READY || s == TOF_S_OK || s == TOF_S_OUT;
+}
+
+// Одне попередження на зміну: відмова/повернення датчика, сектор без справних датчиків, захист вимкнений.
+static void log_events(const tof_events_t *ev)
+{
     for (int i = 0; i < TOF_SENSORS; i++) {
-        if (bring_up((tof_id_t)i)) {
-            ok++;
-            ESP_LOGI(TAG, "далекомір %s: працює, адреса 0x%02X", PLACE[i], s_vl[i].addr);
-        } else {
-            ESP_LOGW(TAG, "далекомір %s: відмова при старті", PLACE[i]);
+        if (ev->failed_now & (1u << i)) {
+            ESP_LOGW(TAG, "далекомір %s: відмова — немає валідного відліку %d мс, сектор не вважається зайнятим через нього; "
+                          "повернути: tof reinit у DISARMED", PLACE[i], TOF_FAIL_MS);
+        }
+        if (ev->restored_now & (1u << i)) {
+            ESP_LOGI(TAG, "далекомір %s: повернуто в роботу", PLACE[i]);
         }
     }
-    if (ok == 0) {
+    tof_view_t v;
+    tof_core_view(&s_core, &v);
+    for (int k = 0; k < TOF_SECTORS; k++) {
+        if (v.sector[k].guarded != s_prev_guarded[k]) {
+            ESP_LOGW(TAG, "%s сектор %s", k == TOF_SECTOR_FRONT ? "передній" : "задній",
+                     v.sector[k].guarded ? "знову охороняється" : "не охороняється: жодного справного далекоміра");
+            s_prev_guarded[k] = v.sector[k].guarded;
+        }
+    }
+    if (v.protection != s_prev_protection) {
+        if (!v.protection) {
+            ESP_LOGW(TAG, "захист від зіткнень вимкнено: жоден далекомір не працює");
+        }
+        s_prev_protection = v.protection;
+    }
+}
+
+// Енумерація на старті: усі чотири по черзі; результат кожного — в tof_core і в журнал.
+static void enumerate(void)
+{
+    tof_events_t ev = {0};
+    if (!ioexp_hal_available()) {
+        ESP_LOGW(TAG, "розширювач недоступний — лінії скидання далекомірів піднімати нікуди: усі чотири у відмові");
+        for (int i = 0; i < TOF_SENSORS; i++) {
+            tof_core_mark_failed(&s_core, (tof_id_t)i, &ev);
+        }
+    } else {
+        int ok = 0;
+        for (int i = 0; i < TOF_SENSORS; i++) {
+            if (bring_up((tof_id_t)i)) {
+                tof_core_start(&s_core, (tof_id_t)i, now_ms(), &ev);
+                ESP_LOGI(TAG, "далекомір %s: працює, адреса 0x%02X", PLACE[i], s_vl[i].addr);
+                ok++;
+            } else {
+                tof_core_mark_failed(&s_core, (tof_id_t)i, &ev);
+                ESP_LOGW(TAG, "далекомір %s: відмова при старті", PLACE[i]);
+            }
+        }
+        (void)ok;
+    }
+    tof_view_t v;
+    tof_core_view(&s_core, &v);
+    for (int k = 0; k < TOF_SECTORS; k++) {
+        s_prev_guarded[k] = v.sector[k].guarded;
+        if (!v.sector[k].guarded) {
+            ESP_LOGW(TAG, "%s сектор не охороняється: жодного справного далекоміра", k == TOF_SECTOR_FRONT ? "передній" : "задній");
+        }
+    }
+    s_prev_protection = v.protection;
+    if (!v.protection) {
         ESP_LOGW(TAG, "жоден далекомір не працює — захист від зіткнень вимкнено");
     }
+    publish();
+}
+
+// Повторна ініціалізація відмовивших (лише DISARMED): спершу опустити лінії скидання всіх відмовивших, потім піднімати по одному,
+// щоб на 0x29 завжди був один пристрій. Опитування решти на цей час призупинено (spec AC-08, послаблено).
+static void do_reinit(void)
+{
+    size_t pos = 0;
+    s_reinit_text[0] = '\0';
+    int failed[TOF_SENSORS], nf = 0;
+    for (int i = 0; i < TOF_SENSORS; i++) {
+        if (s_core.s[i].state == TOF_S_FAILED) {
+            failed[nf++] = i;
+        }
+    }
+    if (app_state_get() != APP_STATE_DISARMED) {
+        snprintf(s_reinit_text, sizeof(s_reinit_text), "Повторну ініціалізацію не виконано: ровер не в DISARMED.");
+    } else if (nf == 0) {
+        snprintf(s_reinit_text, sizeof(s_reinit_text), "Відмовивших далекомірів немає: повторна ініціалізація не потрібна.");
+    } else {
+        for (int k = 0; k < nf; k++) {
+            ioexp_hal_xshut(XSHUT_BIT[failed[k]], false);
+        }
+        bool aborted = false;
+        for (int k = 0; k < nf && !aborted; k++) {
+            tof_events_t ev = {0};
+            int i = failed[k];
+            if (app_state_get() != APP_STATE_DISARMED) {
+                aborted = true;
+                break;
+            }
+            bool ok = bring_up((tof_id_t)i);
+            if (ok) {
+                tof_core_start(&s_core, (tof_id_t)i, now_ms(), &ev);
+            }
+            log_events(&ev);
+            int w = snprintf(s_reinit_text + pos, sizeof(s_reinit_text) - pos, "%s%s: %s", k ? "\n" : "", PLACE[i],
+                             ok ? "повернуто в роботу" : "досі відмова (не відповідає)");
+            if (w > 0 && (size_t)w < sizeof(s_reinit_text) - pos) pos += (size_t)w;
+        }
+        if (aborted) {
+            snprintf(s_reinit_text + pos, sizeof(s_reinit_text) - pos, "%sПовторну ініціалізацію перервано: ровер вийшов з DISARMED.",
+                     pos ? "\n" : "");
+        }
+    }
+    tof_core_resume(&s_core, now_ms());   // пауза опитування не має давати хибних відмов справним датчикам
+    publish();
+}
+
+static void sensors_task(void *arg)
+{
+    (void)arg;
+    enumerate();
+    TickType_t last = xTaskGetTickCount();
+    int dead_cycles = 0;
+    for (;;) {
+        if (s_reinit_req) {
+            do_reinit();
+            s_reinit_req = false;
+            xSemaphoreGive(s_reinit_done);
+            last = xTaskGetTickCount();
+        }
+        uint32_t now = now_ms();
+        int timed = 0, answered = 0;
+        for (int i = 0; i < TOF_SENSORS; i++) {
+            if (!timed_state(s_core.s[i].state)) {
+                continue;
+            }
+            timed++;
+            uint16_t mm;
+            vl_poll_t r = vl_poll(&s_vl[i], &mm);
+            if (r != VL_POLL_ERR) {
+                answered++;
+            }
+            if (r == VL_POLL_OK) {
+                tof_core_sample(&s_core, (tof_id_t)i, mm, now);
+            }
+        }
+        // Шина могла «зависнути» (датчик тримає SDA): після кількох циклів без жодної відповіді скидаємо її стан.
+        if (timed > 0 && answered == 0) {
+            if (++dead_cycles % BUS_RESET_EVERY_CYCLES == 0 && i2c_bus_lock(LOCK_TIMEOUT_MS)) {
+                esp_err_t rst = i2c_bus_reset();
+                i2c_bus_unlock();
+                if (dead_cycles == BUS_RESET_EVERY_CYCLES) {
+                    ESP_LOGW(TAG, "жоден далекомір не відповідає %d циклів поспіль — скидання шини: %s", dead_cycles,
+                             esp_err_to_name(rst));
+                }
+            }
+        } else {
+            dead_cycles = 0;
+        }
+        tof_events_t ev = {0};
+        tof_core_tick(&s_core, now, &ev);
+        log_events(&ev);
+        publish();
+        vTaskDelayUntil(&last, pdMS_TO_TICKS(TOF_PERIOD_MS));
+    }
+}
+
+esp_err_t tof_start(void)
+{
+    if (s_started) {
+        return ESP_OK;
+    }
+    tof_core_init(&s_core);
+    memset(&s_view, 0, sizeof(s_view));
+    s_reinit_done = xSemaphoreCreateBinary();
+    if (s_reinit_done == NULL ||
+        xTaskCreatePinnedToCore(sensors_task, "sensors", SENSORS_STACK, NULL, SENSORS_PRIORITY, NULL, SENSORS_CORE) != pdPASS) {
+        ESP_LOGE(TAG, "задачу sensors не створено — захист від зіткнень вимкнено, ровер працює без нього");
+        return ESP_FAIL;
+    }
+    s_started = true;   // у Task WDT не підписана (Decision override, sad.md §1): завислу задачу ловить вік знімка в control
     return ESP_OK;
+}
+
+size_t tof_show_text(char *buf, size_t n)
+{
+    tof_view_t v;
+    tof_snapshot_get(&v);
+    bool stale = v.valid && (uint32_t)(now_ms() - v.t_ms) > TOF_STALE_MS;
+    return tof_fmt_show(buf, n, &v, stale);
+}
+
+size_t tof_reinit_text(char *buf, size_t n)
+{
+    if (buf == NULL || n == 0) {
+        return 0;
+    }
+    if (!s_started) {
+        return (size_t)snprintf(buf, n, "Далекоміри не запущено: повторна ініціалізація неможлива.");
+    }
+    if (s_reinit_req) {
+        return (size_t)snprintf(buf, n, "Повторна ініціалізація вже триває.");
+    }
+    xSemaphoreTake(s_reinit_done, 0);   // скинути застарілий сигнал
+    s_reinit_req = true;
+    if (xSemaphoreTake(s_reinit_done, pdMS_TO_TICKS(REINIT_WAIT_MS)) != pdTRUE) {
+        return (size_t)snprintf(buf, n, "Задача sensors не завершила повторну ініціалізацію за %d с — перевірте журнал.",
+                                REINIT_WAIT_MS / 1000);
+    }
+    return (size_t)snprintf(buf, n, "%s", s_reinit_text);
 }

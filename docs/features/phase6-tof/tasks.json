@@ -231,7 +231,7 @@
         "components/tof/include/tof_hal.h"
       ],
       "file": "docs/features/phase6-tof/tasks/t11-tof-hal-sensors-task-snapshot-reinit.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T12",

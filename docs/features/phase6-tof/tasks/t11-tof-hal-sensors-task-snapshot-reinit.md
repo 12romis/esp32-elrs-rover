@@ -9,8 +9,8 @@ files_hint: ["components/tof/tof_hal.c", "components/tof/include/tof_hal.h"]
 owner: "Агент"
 estimate: "M"
 context_budget: "M"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T11 — Додати в tof_hal задачу sensors: опитування раз на 50 мс, знімок під portMUX, відмова за 250 мс, tof reinit у DISARMED
