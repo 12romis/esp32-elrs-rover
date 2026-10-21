@@ -136,13 +136,19 @@ static void do_status(void)
         s_ops->ui_status(&us);
         char line[320];  // найдовший рядок ≈ 270 байтів (UTF-8)
         console_fmt_ui_status(line, sizeof(line), us.expander_ok, us.head, us.red, us.green, us.rear_auto,
-                              us.indicator_red, us.buzzer_on, us.remaining_ms);
+                              us.indicator, us.buzzer_on, us.remaining_ms);
         printf("%s\r\n", line);
     }
     if (s_ops->rc_status) {
         static char rc[800];   // рядки про пульт (зокрема вихід з FAILSAFE); static — не на стеку консолі, викликає лише вона
         s_ops->rc_status(rc, sizeof(rc));
         put_lines(rc);
+    }
+    if (s_ops->step_status) {
+        char step[256];   // «крок керування: останній … мкс, …» ≈ 190 байтів (UTF-8)
+        s_ops->step_status(step, sizeof(step));
+        put_lines(step);
+        printf("\r\n");
     }
     if (s_ops->enc_status) {
         char enc[160];   // «енкодери: 0 з 4 доступні, недоступні: FL, FR, RL, RR» ≈ 90 байтів (UTF-8)

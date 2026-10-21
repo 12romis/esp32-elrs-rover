@@ -101,6 +101,14 @@ static void crsf_rx_task(void *arg)
     }
 }
 
+bool crsf_hal_send(const uint8_t *frame, size_t len)
+{
+    if (!s_running || frame == NULL || len == 0 || len > CRSF_FRAME_MAX) {
+        return false;
+    }
+    return uart_write_bytes(CRSF_UART, frame, len) == (int)len;
+}
+
 esp_err_t crsf_start(void)
 {
     crsf_parser_init(&s_parser);

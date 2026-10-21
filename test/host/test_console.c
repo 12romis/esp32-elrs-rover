@@ -485,15 +485,17 @@ static void test_ui_messages(void)
     console_fmt_ui_denied(b, sizeof b, UI_DENY_RANGE, APP_STATE_DISARMED, APP_FS_NONE);
     CHECK(strstr(b, "200") && strstr(b, "5000"));
     char s[320];  // як буфер console_hal
-    console_fmt_ui_status(s, sizeof s, true, true, false, true, true, false, true, 250);
+    console_fmt_ui_status(s, sizeof s, true, true, false, true, true, UI_IND_OFF, true, 250);
     CHECK(strstr(s, "розширювач: доступний") && strstr(s, "head") && strstr(s, "ввімкнено") && strstr(s, "рух"));
     CHECK(strstr(s, "індикатор плати: вимкнений") && strstr(s, "зумер: звучить") && strstr(s, "250 мс"));
-    console_fmt_ui_status(s, sizeof s, false, false, false, false, false, true, false, 0);
+    console_fmt_ui_status(s, sizeof s, false, false, false, false, false, UI_IND_RED, false, 0);
     CHECK(strstr(s, "розширювач: недоступний") && strstr(s, "вручну") && strstr(s, "індикатор плати: червоний"));
     CHECK(strstr(s, "зумер: мовчить") && strstr(s, "0 мс"));
-    console_fmt_ui_status(s, sizeof s, false, true, true, true, true, true, true, 4294967295u);
+    console_fmt_ui_status(s, sizeof s, true, true, true, true, true, UI_IND_YELLOW, true, 100);
+    CHECK(strstr(s, "індикатор плати: жовтий") != NULL);                  // phase7-telemetry A8
+    console_fmt_ui_status(s, sizeof s, false, true, true, true, true, UI_IND_YELLOW, true, 4294967295u);
     CHECK(strstr(s, "4294967295 мс") != NULL && strlen(s) < 300);  // найдовший варіант вміщається без обрізання
-    console_fmt_ui_status(s, 6, true, true, true, true, true, true, true, 5);  // малий буфер не падає
+    console_fmt_ui_status(s, 6, true, true, true, true, true, UI_IND_RED, true, 5);  // малий буфер не падає
     CHECK(strlen(s) <= 5);
 }
 

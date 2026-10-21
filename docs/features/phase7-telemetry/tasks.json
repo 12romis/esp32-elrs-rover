@@ -1,0 +1,255 @@
+{
+  "slug": "phase7-telemetry",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Створити telemetry_core: кадр датчика батареї, рішення «слати чи ні», детектор зміни збою, статистика часу кроку й рядок status",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-01",
+        "AC-02",
+        "AC-04",
+        "AC-05",
+        "AC-19"
+      ],
+      "dod": "тести `test_telemetry.c` проходять, `telemetry_core.c` без заголовків ESP-IDF, збірка без нових попереджень",
+      "files_hint": [
+        "components/telemetry/telemetry_core.c",
+        "components/telemetry/include/telemetry_core.h",
+        "components/telemetry/CMakeLists.txt",
+        "test/host/test_telemetry.c"
+      ],
+      "file": "docs/features/phase7-telemetry/tasks/t1-telemetry-core-frame-and-step-stats.md",
+      "status": "done"
+    },
+    {
+      "id": "T2",
+      "title": "Навчити ui_core подвійному біпу на вході в OBSTACLE_HOLD і на виході в ARMED, жовтому індикатору й пріоритетам сигналів",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-06",
+        "AC-07",
+        "AC-08",
+        "AC-09",
+        "AC-15",
+        "AC-16",
+        "AC-19"
+      ],
+      "dod": "хостові тести ui проходять (оновлені й нові), `ui_core.c` без заголовків ESP-IDF, збірка без нових попереджень",
+      "files_hint": [
+        "components/ui/ui_core.c",
+        "components/ui/include/ui_core.h",
+        "test/host/test_ui.c"
+      ],
+      "file": "docs/features/phase7-telemetry/tasks/t2-ui-core-double-beep-and-yellow-indicator.md",
+      "status": "done"
+    },
+    {
+      "id": "T3",
+      "title": "Навчити ui_core блиманню фар при зайнятому передньому секторі й задніх ліхтарів при зайнятому задньому в OBSTACLE_HOLD",
+      "layer": "domain",
+      "deps": [
+        "T2"
+      ],
+      "acs": [
+        "AC-10",
+        "AC-11",
+        "AC-12",
+        "AC-13",
+        "AC-19"
+      ],
+      "dod": "хостові тести блимання проходять, збірка без нових попереджень",
+      "files_hint": [
+        "components/ui/ui_core.c",
+        "components/ui/include/ui_core.h",
+        "test/host/test_ui.c"
+      ],
+      "file": "docs/features/phase7-telemetry/tasks/t3-ui-core-hold-blink-front-rear.md",
+      "status": "done"
+    },
+    {
+      "id": "T4",
+      "title": "Додати в drive_status_t прапорці секторів і дві відмітки часу навколо кроку control з записом у telemetry_step_record",
+      "layer": "infra",
+      "deps": [
+        "T1"
+      ],
+      "acs": [
+        "AC-03",
+        "AC-04",
+        "AC-14"
+      ],
+      "dod": "збірка без нових попереджень; затримка «кадр → борти» в межах spec §6 (приймання T12); `check_delays.sh` чистий",
+      "files_hint": [
+        "components/drive/drive_hal.c",
+        "components/drive/include/drive_hal.h",
+        "components/drive/CMakeLists.txt"
+      ],
+      "file": "docs/features/phase7-telemetry/tasks/t4-drive-hal-sector-flags-and-step-timing.md",
+      "status": "review"
+    },
+    {
+      "id": "T5",
+      "title": "Додати crsf_hal_send: запис готового кадру в UART2 власником лінії без блокування керування",
+      "layer": "infra",
+      "deps": [],
+      "acs": [
+        "AC-03"
+      ],
+      "dod": "збірка без нових попереджень; `check_delays.sh` і `check_pins.sh` чисті; запис на залізі — T12",
+      "files_hint": [
+        "components/crsf/crsf_hal.c",
+        "components/crsf/include/crsf_hal.h"
+      ],
+      "file": "docs/features/phase7-telemetry/tasks/t5-crsf-hal-send.md",
+      "status": "review"
+    },
+    {
+      "id": "T6",
+      "title": "Створити telemetry_hal: задача telemetry (200 мс) читає знімок напруги й передає кадр через crsf_hal_send",
+      "layer": "infra",
+      "deps": [
+        "T1",
+        "T5"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ],
+      "dod": "збірка без нових попереджень; `check_delays.sh` чистий; пульт показує напругу — T12",
+      "files_hint": [
+        "components/telemetry/telemetry_hal.c",
+        "components/telemetry/include/telemetry_hal.h",
+        "components/telemetry/CMakeLists.txt"
+      ],
+      "file": "docs/features/phase7-telemetry/tasks/t6-telemetry-hal-task.md",
+      "status": "review"
+    },
+    {
+      "id": "T7",
+      "title": "Підключити в ui_hal прапорці секторів, жовтий колір індикатора й колір у ui_hal_status_t",
+      "layer": "infra",
+      "deps": [
+        "T2",
+        "T3",
+        "T4"
+      ],
+      "acs": [
+        "AC-06",
+        "AC-07",
+        "AC-09",
+        "AC-13",
+        "AC-14"
+      ],
+      "dod": "збірка без нових попереджень; жовтий і блимання перевіряє Розробник — T12",
+      "files_hint": [
+        "components/ui/ui_hal.c",
+        "components/ui/include/ui_hal.h"
+      ],
+      "file": "docs/features/phase7-telemetry/tasks/t7-ui-hal-hold-wiring.md",
+      "status": "review"
+    },
+    {
+      "id": "T8",
+      "title": "Підключити в main старт telemetry і колбек step_status, показати колір індикатора й час кроку в status",
+      "layer": "wiring",
+      "deps": [
+        "T1",
+        "T4",
+        "T6",
+        "T7"
+      ],
+      "acs": [
+        "AC-04",
+        "AC-05"
+      ],
+      "dod": "хостові тести консолі проходять, збірка без нових попереджень, `help` без змін у наборі команд",
+      "files_hint": [
+        "main/main.c",
+        "main/CMakeLists.txt",
+        "components/rover_console/console_core.c",
+        "components/rover_console/console_hal.c",
+        "components/rover_console/include/console.h",
+        "test/host/test_console.c"
+      ],
+      "file": "docs/features/phase7-telemetry/tasks/t8-main-and-console-wiring.md",
+      "status": "done"
+    },
+    {
+      "id": "T9",
+      "title": "Написати README (опис, збірка, запуск, інтерфейси) і блок-схему в docs/architecture.md",
+      "layer": "docs",
+      "deps": [
+        "T8"
+      ],
+      "acs": [
+        "AC-17"
+      ],
+      "dod": "README і `docs/architecture.md` існують, діаграма відрендерилась без помилок",
+      "files_hint": [
+        "README.md",
+        "docs/architecture.md"
+      ],
+      "file": "docs/features/phase7-telemetry/tasks/t9-readme-and-architecture-diagram.md",
+      "status": "done"
+    },
+    {
+      "id": "T10",
+      "title": "Скласти чекліст самоперевірки docs/self-check.md за таблицею документа 02 §5 із посиланнями на докази",
+      "layer": "docs",
+      "deps": [
+        "T9"
+      ],
+      "acs": [
+        "AC-18"
+      ],
+      "dod": "кожен рядок має статус і посилання на доказ або чесне «не перевірено на залізі»",
+      "files_hint": [
+        "docs/self-check.md"
+      ],
+      "file": "docs/features/phase7-telemetry/tasks/t10-self-check-checklist.md",
+      "status": "done"
+    },
+    {
+      "id": "T11",
+      "title": "Прогнати повну збірку, хостові тести й статичні перевірки, виправити порушення",
+      "layer": "tests",
+      "deps": [
+        "T8",
+        "T10"
+      ],
+      "acs": [
+        "AC-19",
+        "AC-20"
+      ],
+      "dod": "збірка 0/0, хостові тести й перевірки чисті, звіт про числа — у handoff",
+      "files_hint": [
+        "test/host/run_tests.sh",
+        "test/host/check_core_headers.sh",
+        "test/host/README.md"
+      ],
+      "file": "docs/features/phase7-telemetry/tasks/t11-host-guardrails-full-run.md",
+      "status": "done"
+    },
+    {
+      "id": "T12",
+      "title": "Написати acceptance.md: процедура приймання фази 7 на залізі для Розробника",
+      "layer": "docs",
+      "deps": [
+        "T11"
+      ],
+      "acs": [
+        "AC-21"
+      ],
+      "dod": "файл існує, кожен крок прив’язаний до AC, жодного числа в журнал від Агента",
+      "files_hint": [
+        "docs/features/phase7-telemetry/acceptance.md"
+      ],
+      "file": "docs/features/phase7-telemetry/tasks/t12-acceptance-checklist.md",
+      "status": "done"
+    }
+  ]
+}

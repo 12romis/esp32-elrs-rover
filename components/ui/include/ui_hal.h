@@ -19,7 +19,7 @@ typedef struct {
     bool expander_ok;
     bool head, red, green;
     bool rear_auto;         // задні ліхтарі керує автоматика (ARMED, FAILSAFE)
-    bool indicator_red;
+    ui_indicator_t indicator;   // колір індикатора плати: погашений, червоний, жовтий
     bool buzzer_on;
     uint32_t remaining_ms;
 } ui_hal_status_t;

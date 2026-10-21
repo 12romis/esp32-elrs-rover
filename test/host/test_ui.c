@@ -426,22 +426,40 @@ static void test_failsafe_reentry_restarts_timeline(void)
 }
 
 // ---------- phase6-tof (ADR-0004): OBSTACLE_HOLD — стан руху ----------
-static void test_hold_rear_auto_and_silent_transitions(void)
+static void test_hold_rear_auto_and_double_beep_transitions(void)
 {
     ui_core_t u;
     ui_core_init(&u, HZ);
     settle(&u, 0, APP_STATE_DISARMED);
     ui_out_t o = tick(&u, 200, APP_STATE_ARMED, 0, 0, true);
-    CHECK(o.head && o.buzzer_on);                       // озброєння: фари й сигнал, як у фазі 2
+    CHECK(o.head && o.buzzer_on);                       // озброєння: фари й одинарний сигнал, як у фазі 2
+    o = tick(&u, 300, APP_STATE_ARMED, 0, 0, true);
+    CHECK(!o.buzzer_on);
     o = tick(&u, 400, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
     CHECK(o.head);                                      // фари не змінились
-    CHECK(!o.buzzer_on);                                // ARMED → OBSTACLE_HOLD без сигналу
+    CHECK(o.buzzer_on && o.buzzer_hz == HZ);            // phase7-telemetry A5: вхід в утримання — подвійний біп, перший звук
+    CHECK(o.indicator == UI_IND_YELLOW);                // A8: жовтий увесь час утримання
     CHECK(o.red && o.green);                            // стоїть: жовтий
-    o = tick(&u, 500, APP_STATE_OBSTACLE_HOLD, -300, -300, true);
+    o = tick(&u, 500, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    CHECK(!o.buzzer_on);                                // пауза 100 мс
+    o = tick(&u, 600, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    CHECK(o.buzzer_on && o.buzzer_hz == HZ);            // другий звук
+    o = tick(&u, 700, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    CHECK(!o.buzzer_on && o.indicator == UI_IND_YELLOW);
+    o = tick(&u, 800, APP_STATE_OBSTACLE_HOLD, -300, -300, true);
     CHECK(!o.red && o.green);                           // назад: лише зелений, як в ARMED
-    o = tick(&u, 600, APP_STATE_ARMED, -300, -300, true);
-    CHECK(o.head && !o.buzzer_on);                      // OBSTACLE_HOLD → ARMED без сигналу й без примусових фар
+    CHECK(!o.buzzer_on);
+    o = tick(&u, 900, APP_STATE_ARMED, -300, -300, true);
+    CHECK(o.head && o.buzzer_on);                       // вихід в ARMED — подвійний біп; фари не чіпає
+    CHECK(o.indicator == UI_IND_OFF);                   // індикатор гасне
     CHECK(!o.red && o.green);
+    o = tick(&u, 1000, APP_STATE_ARMED, -300, -300, true);
+    CHECK(!o.buzzer_on);
+    o = tick(&u, 1100, APP_STATE_ARMED, -300, -300, true);
+    CHECK(o.buzzer_on);
+    o = tick(&u, 1200, APP_STATE_ARMED, -300, -300, true);
+    CHECK(!o.buzzer_on);
+    CHECK(ui_core_remaining_ms(&u, 1200) == 0);
 }
 
 static void test_hold_does_not_force_headlights(void)
@@ -455,20 +473,24 @@ static void test_hold_does_not_force_headlights(void)
     CHECK(!o.head);
     o = tick(&u, 400, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
     CHECK(!o.head);
-    o = tick(&u, 500, APP_STATE_ARMED, 0, 0, true);
-    CHECK(!o.head && !o.buzzer_on);                     // повернення в ARMED не вмикає фари знову
+    o = tick(&u, 800, APP_STATE_ARMED, 0, 0, true);
+    CHECK(!o.head && o.buzzer_on);                      // повернення в ARMED не вмикає фари знову (ADR-0004), але біпає
 }
 
-static void test_disarmed_to_hold_is_arming(void)
+static void test_disarmed_to_hold_double_beep_replaces_arming(void)
 {
     // ui опитує раз на 100 мс: озброєння біля вже зайнятого сектору виглядає як DISARMED → OBSTACLE_HOLD
     ui_core_t u;
     ui_core_init(&u, HZ);
     settle(&u, 0, APP_STATE_DISARMED);
     ui_out_t o = tick(&u, 200, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
-    CHECK(o.head);
+    CHECK(o.head);                                      // фари вмикаються як при вході в рух
     CHECK(o.buzzer_on && o.buzzer_hz == HZ);
-    CHECK(o.red && o.green);
+    CHECK(o.red && o.green && o.indicator == UI_IND_YELLOW);
+    o = tick(&u, 300, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    CHECK(!o.buzzer_on);                                // пауза: це подвійний біп, а не одинарний сигнал озброєння
+    o = tick(&u, 400, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    CHECK(o.buzzer_on);                                 // другий звук
 }
 
 static void test_hold_exits(void)
@@ -479,16 +501,229 @@ static void test_hold_exits(void)
     tick(&u, 200, APP_STATE_ARMED, 0, 0, true);
     tick(&u, 400, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
     ui_out_t o = tick(&u, 600, APP_STATE_DISARMED, 0, 0, true);   // роззброєння з утримання
-    CHECK(!o.head && o.buzzer_on);
+    CHECK(!o.head && o.buzzer_on);                                 // одинарний сигнал DISARMED
     CHECK(o.red && !o.green);                                      // ручний стан DISARMED: червоний
+    CHECK(o.indicator == UI_IND_OFF);
+    o = tick(&u, 700, APP_STATE_DISARMED, 0, 0, true);
+    CHECK(!o.buzzer_on);
+    o = tick(&u, 800, APP_STATE_DISARMED, 0, 0, true);
+    CHECK(!o.buzzer_on);                                           // подвійного біпа на виході в DISARMED немає
     ui_core_t w;
     ui_core_init(&w, HZ);
     settle(&w, 0, APP_STATE_DISARMED);
     tick(&w, 200, APP_STATE_ARMED, 0, 0, true);
     tick(&w, 400, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
-    o = tick(&w, 600, APP_STATE_FAILSAFE, 0, 0, true);             // FAILSAFE з утримання
-    CHECK(!o.head && o.buzzer_on);
-    CHECK(o.indicator == UI_IND_RED);
+    o = tick(&w, 500, APP_STATE_FAILSAFE, 0, 0, true);             // FAILSAFE з утримання, у паузі подвійного біпа
+    CHECK(!o.head && o.buzzer_on);                                 // звучить сигнал FAILSAFE: біп справді перервано
+    CHECK(o.indicator == UI_IND_RED);                              // червоний, не жовтий
+    o = tick(&w, 600, APP_STATE_FAILSAFE, 0, 0, true);
+    CHECK(!o.buzzer_on);                                           // другий звук подвійного біпа не доспівав
+    o = tick(&w, 800, APP_STATE_FAILSAFE, 0, 0, true);
+    CHECK(!o.buzzer_on);                                           // лише сигнали FAILSAFE: наступний писк через 2000 мс
+}
+
+// Такт ui зсунуто на 1 мс (задачу sensors вищого пріоритету): подвійний біп лишається 100/100/100 мс.
+static void test_double_beep_tolerates_tick_jitter(void)
+{
+    ui_core_t u;
+    ui_core_init(&u, HZ);
+    settle(&u, 0, APP_STATE_DISARMED);
+    tick(&u, 200, APP_STATE_ARMED, 0, 0, true);
+    ui_out_t o = tick(&u, 401, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    CHECK(o.buzzer_on);
+    o = tick(&u, 500, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    CHECK(!o.buzzer_on);
+    o = tick(&u, 600, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    CHECK(o.buzzer_on);
+    o = tick(&u, 700, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    CHECK(!o.buzzer_on);
+    o = tick(&u, 800, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    CHECK(!o.buzzer_on);
+    // зсув в інший бік: 390 (раніше сітки) і 405
+    ui_core_t v;
+    ui_core_init(&v, HZ);
+    settle(&v, 0, APP_STATE_DISARMED);
+    tick(&v, 200, APP_STATE_ARMED, 0, 0, true);
+    tick(&v, 390, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    CHECK(!tick(&v, 495, APP_STATE_OBSTACLE_HOLD, 0, 0, true).buzzer_on);
+    CHECK(tick(&v, 590, APP_STATE_OBSTACLE_HOLD, 0, 0, true).buzzer_on);
+    CHECK(!tick(&v, 690, APP_STATE_OBSTACLE_HOLD, 0, 0, true).buzzer_on);
+}
+
+static void test_double_beep_no_overlap(void)
+{
+    ui_core_t u;
+    ui_core_init(&u, HZ);
+    settle(&u, 0, APP_STATE_DISARMED);
+    tick(&u, 200, APP_STATE_ARMED, 0, 0, true);
+    tick(&u, 400, APP_STATE_OBSTACLE_HOLD, 0, 0, true);            // подвійний біп 400…700
+    tick(&u, 500, APP_STATE_ARMED, 0, 0, true);                    // вихід під час біпа — нова подія не стартує
+    ui_out_t o = tick(&u, 600, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    CHECK(o.buzzer_on);                                            // другий звук першого біпа не обірвано
+    o = tick(&u, 700, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    CHECK(!o.buzzer_on);                                           // біп скінчився, нового не було
+    o = tick(&u, 800, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    CHECK(!o.buzzer_on);
+}
+
+static void test_double_beep_replaced_by_disarm_signal(void)
+{
+    ui_core_t u;
+    ui_core_init(&u, HZ);
+    settle(&u, 0, APP_STATE_DISARMED);
+    tick(&u, 200, APP_STATE_ARMED, 0, 0, true);
+    tick(&u, 400, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    ui_out_t o = tick(&u, 500, APP_STATE_DISARMED, 0, 0, true);    // у паузі подвійного біпа
+    CHECK(o.buzzer_on && o.buzzer_hz == HZ);                       // сигнал DISARMED замінив біп
+    o = tick(&u, 600, APP_STATE_DISARMED, 0, 0, true);
+    CHECK(!o.buzzer_on);                                           // решта подвійного біпа не звучить
+}
+
+static void test_double_beep_manual_beep_waits_in_slot(void)
+{
+    ui_core_t u;
+    ui_core_init(&u, HZ);
+    settle(&u, 0, APP_STATE_DISARMED);
+    tick(&u, 200, APP_STATE_ARMED, 0, 0, true);
+    tick(&u, 400, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    tick(&u, 800, APP_STATE_ARMED, 0, 0, true);                    // вихідний подвійний біп 800…1100
+    bool queued = false;
+    CHECK(ui_core_beep(&u, 2000, 500, 850, APP_STATE_ARMED, &queued) == UI_OK && queued);   // чекає в слоті
+    ui_out_t o = tick(&u, 1000, APP_STATE_ARMED, 0, 0, true);
+    CHECK(o.buzzer_on && o.buzzer_hz == HZ);                       // біп не вкорочено
+    o = tick(&u, 1100, APP_STATE_ARMED, 0, 0, true);
+    CHECK(o.buzzer_on && o.buzzer_hz == 2000);                     // після біпа звучить ручний
+}
+
+static void test_hold_indicator_and_no_calibration(void)
+{
+    ui_core_t u;
+    ui_core_init(&u, 0);                                           // частота автосигналів не задана
+    settle(&u, 0, APP_STATE_DISARMED);
+    tick(&u, 200, APP_STATE_ARMED, 0, 0, true);
+    ui_out_t o = tick(&u, 400, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
+    CHECK(!o.buzzer_on && o.indicator == UI_IND_YELLOW);           // без частоти звуку немає, колір є
+    for (int i = 0; i < APP_STATE_COUNT; i++) {
+        ui_core_t v;
+        ui_core_init(&v, HZ);
+        o = tick(&v, 0, ALL[i], 0, 0, true);
+        ui_indicator_t want = ALL[i] == APP_STATE_FAILSAFE ? UI_IND_RED : (ALL[i] == APP_STATE_OBSTACLE_HOLD ? UI_IND_YELLOW : UI_IND_OFF);
+        CHECK(o.indicator == want);
+    }
+    o = tick(&u, 500, APP_STATE_OBSTACLE_HOLD, 0, 0, false);       // без розширювача індикатор і звук працюють
+    CHECK(o.indicator == UI_IND_YELLOW && !o.red && !o.green);
+}
+
+// ---------- phase7-telemetry: блимання в OBSTACLE_HOLD (A9–A12) ----------
+static ui_out_t tick_occ(ui_core_t *u, uint32_t t, app_state_t s, int l, int r, bool ok, bool front, bool rear)
+{
+    ui_in_t i = in_of(t, s, l, r, ok);
+    i.front_occupied = front;
+    i.rear_occupied = rear;
+    ui_out_t o;
+    ui_core_tick(u, &i, &o);
+    return o;
+}
+
+// Ровер в ARMED, фари ввімкнені автоматично; вхід в утримання в момент 1000.
+static void to_hold(ui_core_t *u)
+{
+    ui_core_init(u, HZ);
+    settle(u, 0, APP_STATE_DISARMED);
+    tick(u, 200, APP_STATE_ARMED, 0, 0, true);
+}
+
+static void test_blink_front_only(void)
+{
+    ui_core_t u;
+    to_hold(&u);
+    ui_out_t o = tick_occ(&u, 1000, APP_STATE_OBSTACLE_HOLD, 0, 0, true, true, false);
+    CHECK(o.head);                                  // перша фаза «світить»
+    CHECK(o.red && o.green);                        // задні ліхтарі без блимання
+    o = tick_occ(&u, 1100, APP_STATE_OBSTACLE_HOLD, 0, 0, true, true, false);
+    CHECK(o.head && o.red && o.green);              // 100 мс від входу — ще перша фаза
+    o = tick_occ(&u, 1200, APP_STATE_OBSTACLE_HOLD, 0, 0, true, true, false);
+    CHECK(o.head);                                  // 200 мс < 250
+    o = tick_occ(&u, 1300, APP_STATE_OBSTACLE_HOLD, 0, 0, true, true, false);
+    CHECK(!o.head && o.red && o.green);             // друга фаза: фари погасли, ліхтарі світять
+    o = tick_occ(&u, 1400, APP_STATE_OBSTACLE_HOLD, 0, 0, true, true, false);
+    CHECK(!o.head);
+    o = tick_occ(&u, 1500, APP_STATE_OBSTACLE_HOLD, 0, 0, true, true, false);
+    CHECK(o.head);                                  // третя фаза (500…749)
+}
+
+static void test_blink_rear_only_uses_motion_colour(void)
+{
+    ui_core_t u;
+    to_hold(&u);
+    ui_out_t o = tick_occ(&u, 1000, APP_STATE_OBSTACLE_HOLD, 0, 0, true, false, true);
+    CHECK(o.red && o.green && o.head);              // стоїть: жовтий у фазі «світить», фари не блимають
+    o = tick_occ(&u, 1300, APP_STATE_OBSTACLE_HOLD, 0, 0, true, false, true);
+    CHECK(!o.red && !o.green && o.head);            // фаза «вимкнено»: ліхтарі погасли, фари світять
+    o = tick_occ(&u, 1500, APP_STATE_OBSTACLE_HOLD, 200, 200, true, false, true);
+    CHECK(o.red && o.green);                        // вперед: жовтий
+    o = tick_occ(&u, 1600, APP_STATE_OBSTACLE_HOLD, -200, -200, true, false, true);
+    CHECK(!o.red && o.green);                       // назад у фазі «світить»: лише зелений
+    o = tick_occ(&u, 1800, APP_STATE_OBSTACLE_HOLD, -200, -200, true, false, true);
+    CHECK(!o.red && !o.green);                      // фаза «вимкнено»
+}
+
+static void test_blink_both_in_step_and_switch_inside_hold(void)
+{
+    ui_core_t u;
+    to_hold(&u);
+    ui_out_t o = tick_occ(&u, 1000, APP_STATE_OBSTACLE_HOLD, 0, 0, true, true, true);
+    CHECK(o.head && o.red && o.green);
+    o = tick_occ(&u, 1300, APP_STATE_OBSTACLE_HOLD, 0, 0, true, true, true);
+    CHECK(!o.head && !o.red && !o.green);           // синхронно
+    o = tick_occ(&u, 1400, APP_STATE_OBSTACLE_HOLD, 0, 0, true, false, true);
+    CHECK(o.head && !o.red && !o.green);            // передній звільнився: фари світять одразу, задні ще блимають
+    o = tick_occ(&u, 1500, APP_STATE_OBSTACLE_HOLD, 0, 0, true, false, false);
+    CHECK(o.head && o.red && o.green);              // жоден не позначений (гонка знімків): без блимання
+    CHECK(o.indicator == UI_IND_YELLOW);            // жовтий лишається
+}
+
+static void test_blink_keeps_manual_head_state(void)
+{
+    ui_core_t u;
+    to_hold(&u);
+    CHECK(ui_core_light(&u, UI_CH_HEAD, false, APP_STATE_ARMED, true) == UI_OK);   // Розробник вимкнув фари
+    tick(&u, 900, APP_STATE_ARMED, 0, 0, true);
+    ui_out_t o = tick_occ(&u, 1000, APP_STATE_OBSTACLE_HOLD, 0, 0, true, true, false);
+    CHECK(o.head);                                  // блимають як попередження, навіть вимкнені
+    o = tick_occ(&u, 1300, APP_STATE_OBSTACLE_HOLD, 0, 0, true, true, false);
+    CHECK(!o.head);
+    o = tick_occ(&u, 1500, APP_STATE_OBSTACLE_HOLD, 0, 0, true, true, false);
+    CHECK(o.head);
+    o = tick_occ(&u, 1600, APP_STATE_OBSTACLE_HOLD, 0, 0, true, false, false);
+    CHECK(!o.head);                                 // блимання скінчилось: повернувся ручний стан (вимкнено)
+    o = tick_occ(&u, 2000, APP_STATE_ARMED, 0, 0, true, false, false);
+    CHECK(!o.head);
+    // фари були ввімкнені — після блимання світять
+    ui_core_t v;
+    to_hold(&v);
+    tick_occ(&v, 1000, APP_STATE_OBSTACLE_HOLD, 0, 0, true, true, false);
+    o = tick_occ(&v, 1300, APP_STATE_OBSTACLE_HOLD, 0, 0, true, true, false);
+    CHECK(!o.head);
+    o = tick_occ(&v, 1400, APP_STATE_OBSTACLE_HOLD, 0, 0, true, false, false);
+    CHECK(o.head);
+}
+
+static void test_blink_without_expander_and_outside_hold(void)
+{
+    ui_core_t u;
+    to_hold(&u);
+    ui_out_t o = tick_occ(&u, 1000, APP_STATE_OBSTACLE_HOLD, 0, 0, false, true, true);
+    CHECK(!o.red && !o.green);                      // розширювач недоступний: ліхтарі не керуються
+    CHECK(o.head);                                  // ручний стан фар, блимання не накладається
+    o = tick_occ(&u, 1300, APP_STATE_OBSTACLE_HOLD, 0, 0, false, true, true);
+    CHECK(o.head);                                  // не блимає й далі
+    CHECK(o.indicator == UI_IND_YELLOW);
+    // поза утриманням прапорці секторів світла не змінюють
+    ui_core_t v;
+    to_hold(&v);
+    o = tick_occ(&v, 300, APP_STATE_ARMED, 0, 0, true, true, true);
+    CHECK(o.head && o.red && o.green);
 }
 
 static void test_hold_manual_denied(void)
@@ -518,10 +753,20 @@ int main(void)
     test_silence_outside_failsafe();
     test_failsafe_exit_to_disarmed();
     test_failsafe_reentry_restarts_timeline();
-    test_hold_rear_auto_and_silent_transitions();
+    test_hold_rear_auto_and_double_beep_transitions();
     test_hold_does_not_force_headlights();
-    test_disarmed_to_hold_is_arming();
+    test_disarmed_to_hold_double_beep_replaces_arming();
     test_hold_exits();
+    test_double_beep_tolerates_tick_jitter();
+    test_double_beep_no_overlap();
+    test_double_beep_replaced_by_disarm_signal();
+    test_double_beep_manual_beep_waits_in_slot();
+    test_hold_indicator_and_no_calibration();
+    test_blink_front_only();
+    test_blink_rear_only_uses_motion_colour();
+    test_blink_both_in_step_and_switch_inside_hold();
+    test_blink_keeps_manual_head_state();
+    test_blink_without_expander_and_outside_hold();
     test_hold_manual_denied();
     return test_summary();
 }

@@ -42,7 +42,7 @@ typedef struct {
     bool expander_ok;
     bool head, red, green;
     bool rear_auto;
-    bool indicator_red;
+    ui_indicator_t indicator;   // колір індикатора плати (phase7-telemetry)
     bool buzzer_on;
     uint32_t remaining_ms;
 } console_ui_status_t;
@@ -62,6 +62,8 @@ typedef struct {
     void (*ui_status)(console_ui_status_t *s);
     // Рядки status про пульт (багаторядковий текст, рядки розділені \n); повертає довжину. NULL — рядків немає.
     size_t (*rc_status)(char *buf, size_t n);
+    // Крок керування (phase7-telemetry, ADR-0003): рядок status про час кроку; пише у буфер виклику, повертає довжину. NULL — рядка немає.
+    size_t (*step_status)(char *buf, size_t n);
     // Енкодери (phase4-encoders, contracts/cli.md): знімок, обнулення з відповіддю, рядок status. Пишуть текст у буфер
     // виклику (рядки розділені \n) і повертають довжину. NULL — енкодери не підключені.
     size_t (*enc_snapshot)(char *buf, size_t n);

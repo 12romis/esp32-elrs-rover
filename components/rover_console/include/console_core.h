@@ -144,7 +144,7 @@ void console_fmt_ui_denied(char *buf, size_t n, ui_result_t r, app_state_t state
 
 // Рядок про світло, зумер і індикатор для status (spec AC-13).
 void console_fmt_ui_status(char *buf, size_t n, bool expander_ok, bool head, bool red, bool green, bool rear_auto,
-                           bool indicator_red, bool buzzer_on, uint32_t remaining_ms);
+                           ui_indicator_t indicator, bool buzzer_on, uint32_t remaining_ms);
 
 // ---------- Команда далекомірів tof (phase6-tof; spec AC-09, AC-10, AC-11, матриця дозволів) ----------
 

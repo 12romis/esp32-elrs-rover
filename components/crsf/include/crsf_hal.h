@@ -3,6 +3,8 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 #include "crsf_core.h"
 #include "esp_err.h"
@@ -11,6 +13,10 @@
 // Помилка — ровер лишається в стендовому режимі (кадрів не буде), про це йде рядок у журнал.
 esp_err_t crsf_start(void);
 bool crsf_hal_running(void);
+
+// Записує готовий кадр у UART2 (phase7-telemetry, ADR-0001): єдиний власник лінії — цей модуль. false — драйвер не встановлено,
+// кадр порожній чи завеликий, або запис не вдався; керування від результату не залежить. Блокує лише на запис кількох байтів.
+bool crsf_hal_send(const uint8_t *frame, size_t len);
 
 // Копія знімка під коротким блокуванням. До старту або без кадрів — нульовий знімок (have_frame = false).
 void crsf_snapshot_get(crsf_snapshot_t *out);
