@@ -13,9 +13,8 @@
 #include "pid_core.h"
 #include "tof_core.h"
 
-// Межа потужності борту, проміле від повної (phase5-pid spec AC-09: 0.75 у фазі 5; підняття винесено разом із захистом
-// від заклинення, spec §3). Консоль її не змінює.
-#define DRIVE_PWM_MAX_PERMILLE 750
+// Межа потужності борту, проміле від повної (підняття ризиковане через відсутність захисту від заклинення)
+#define DRIVE_PWM_MAX_PERMILLE 950
 
 typedef struct {
     uint16_t duty_permille;  // 0…DRIVE_PWM_MAX_PERMILLE

@@ -142,7 +142,8 @@ static void indicator_set(ui_indicator_t colour)
     }
     // GRB: червоний — (0, рівень, 0); жовтий — червоний і зелений разом (рівень, рівень, 0), phase7-telemetry A8; вимкнено — (0, 0, 0).
     // Невдала передача повториться на наступному такті.
-    uint8_t g = colour == UI_IND_YELLOW ? UI_INDICATOR_LEVEL : 0;
+    // uint8_t g = colour == UI_IND_YELLOW ? UI_INDICATOR_LEVEL : 0;
+    uint8_t g = colour == UI_IND_YELLOW ? UI_INDICATOR_LEVEL / 4 : 0;
     uint8_t r = (colour == UI_IND_RED || colour == UI_IND_YELLOW) ? UI_INDICATOR_LEVEL : 0;
     if (indicator_send(g, r, 0)) {
         s_indicator_col = colour;

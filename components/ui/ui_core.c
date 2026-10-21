@@ -192,8 +192,9 @@ void ui_core_tick(ui_core_t *u, const ui_in_t *in, ui_out_t *out)
     if (u->signal_hz != 0) {
         if (changed && in->state == APP_STATE_OBSTACLE_HOLD) {
             start_double(u, in->now_ms);    // вхід в утримання (зокрема видимий з DISARMED) замість сигналу озброєння
-        } else if (changed && was_hold && in->state == APP_STATE_ARMED) {
-            start_double(u, in->now_ms);    // вихід в ARMED; в DISARMED і FAILSAFE лунають їхні власні сигнали
+       } else if (changed && was_hold && in->state == APP_STATE_ARMED) {
+        //    start_double(u, in->now_ms);    // вихід в ARMED; в DISARMED і FAILSAFE лунають їхні власні сигнали
+           start_sound(u, u->signal_hz, UI_FAILSAFE_BEEP_MS, in->now_ms, true);
         } else if (changed && is_signal_state(in->state, entering_motion)) {
             start_sound(u, u->signal_hz, UI_SIGNAL_TRANSITION_MS, in->now_ms, true);
         }
