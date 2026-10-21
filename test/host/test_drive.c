@@ -1516,6 +1516,8 @@ static tof_view_t tv(uint32_t t, bool front_occ, bool rear_occ)
     v.sector[TOF_SECTOR_FRONT].occupied = front_occ;
     v.sector[TOF_SECTOR_FRONT].mm = front_occ ? 120 : 1000;
     v.sector[TOF_SECTOR_FRONT].nearest = TOF_FRONT;
+    v.sector[TOF_SECTOR_FRONT].has_below = front_occ;
+    v.sector[TOF_SECTOR_FRONT].below_ms = t - 10;
     v.sector[TOF_SECTOR_REAR].guarded = true;
     v.sector[TOF_SECTOR_REAR].occupied = rear_occ;
     v.sector[TOF_SECTOR_REAR].mm = rear_occ ? 90 : 1000;
@@ -1545,6 +1547,7 @@ static void test_tof_front_blocks_forward_and_requests_hold(void)
     CHECK(o.out.left.duty_permille == 0 && o.out.right.duty_permille == 0);
     CHECK(o.has_state_request && o.state_request == APP_STATE_OBSTACLE_HOLD);
     CHECK((o.events & DRIVE_EVT_HOLD_ENTER) && o.hold_sector == TOF_SECTOR_FRONT && o.hold_mm == 120 && o.hold_nearest == TOF_FRONT);
+    CHECK(o.hold_has_first && o.hold_first_ms == 1010);          // мітка першого відліку < порога передається в журнал (review R3)
     CHECK(o.remaining_ms > 0);                                             // вікно команди руху ще відкрите
 }
 

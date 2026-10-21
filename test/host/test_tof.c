@@ -414,17 +414,74 @@ static void test_show_text_edge(void)
 
 static void test_hold_line(void)
 {
-    char buf[200];
-    size_t n = tof_fmt_hold_line(buf, sizeof(buf), TOF_SECTOR_FRONT, 150, TOF_FRONT);
+    char buf[320];
+    size_t n = tof_fmt_hold_line(buf, sizeof(buf), TOF_SECTOR_FRONT, 150, TOF_FRONT, true, 1000, 1096);
     CHECK(n > 0 && n == strlen(buf));
     CHECK(strstr(buf, "перед") != NULL);                     // «передній»
     CHECK(strstr(buf, "150") != NULL);
     CHECK(strstr(buf, "170") != NULL);                       // поріг
     CHECK(strstr(buf, "U8") != NULL);
-    n = tof_fmt_hold_line(buf, sizeof(buf), TOF_SECTOR_REAR, 90, TOF_REAR);
+    CHECK(strstr(buf, "1000") != NULL && strstr(buf, "1096") != NULL && strstr(buf, "96") != NULL);   // мітки й затримка (review R3)
+    n = tof_fmt_hold_line(buf, sizeof(buf), TOF_SECTOR_REAR, 90, TOF_REAR, false, 0, 2000);
+    CHECK(strstr(buf, "перший відлік") == NULL);                // міток немає — рядок без них
     CHECK(strstr(buf, "задн") != NULL && strstr(buf, "U10") != NULL);
     CHECK(strcmp(tof_sensor_name(TOF_LEFT_FRONT), "U7") == 0);
     CHECK(strcmp(tof_sensor_name(TOF_RIGHT_FRONT), "U9") == 0);
+}
+
+// ───────── review R3: мітка першого сирого відліку менше порога (AC-01, «≤ 250 мс») ─────────
+static void test_first_below_timestamp(void)
+{
+    tof_core_t c = started();
+    tof_view_t v;
+    uint32_t t = 0;
+    free_all(&c, &t, 3);                                     // t = 150
+    tof_core_view(&c, &v);
+    CHECK(!v.sector[TOF_SECTOR_FRONT].has_below);
+    uint16_t low[TOF_SENSORS] = {1000, 50, 1000, 1000};
+    t = 200;
+    cycle(&c, t, low);                                       // перший відлік < порога; медіана ще висока
+    tof_core_view(&c, &v);
+    CHECK(!v.sector[TOF_SECTOR_FRONT].occupied);
+    CHECK(v.sector[TOF_SECTOR_FRONT].has_below && v.sector[TOF_SECTOR_FRONT].below_ms == 200);
+    t = 250;
+    cycle(&c, t, low);                                       // другий — медіана низька, сектор зайнятий
+    tof_core_view(&c, &v);
+    CHECK(v.sector[TOF_SECTOR_FRONT].occupied);
+    CHECK(v.sector[TOF_SECTOR_FRONT].has_below && v.sector[TOF_SECTOR_FRONT].below_ms == 200);   // мітка першого, не другого
+    CHECK(!v.sector[TOF_SECTOR_REAR].has_below);
+    // звільнення: мітка скидається, коли у кільцях більше немає відліків нижче порога
+    for (int i = 0; i < 6; i++) {
+        t += 50;
+        uint16_t far[TOF_SENSORS] = {1000, 1000, 1000, 1000};
+        cycle(&c, t, far);
+    }
+    tof_core_view(&c, &v);
+    CHECK(!v.sector[TOF_SECTOR_FRONT].occupied && !v.sector[TOF_SECTOR_FRONT].has_below);
+}
+
+static void test_single_spike_clears_below(void)
+{
+    tof_core_t c = started();
+    tof_view_t v;
+    uint32_t t = 0;
+    free_all(&c, &t, 3);
+    uint16_t low[TOF_SENSORS] = {1000, 50, 1000, 1000}, far[TOF_SENSORS] = {1000, 1000, 1000, 1000};
+    t += 50;
+    cycle(&c, t, low);
+    tof_core_view(&c, &v);
+    CHECK(v.sector[TOF_SECTOR_FRONT].has_below);
+    for (int i = 0; i < 3; i++) {                            // викид витіснено з кільця — мітки немає
+        t += 50;
+        cycle(&c, t, far);
+    }
+    tof_core_view(&c, &v);
+    CHECK(!v.sector[TOF_SECTOR_FRONT].occupied && !v.sector[TOF_SECTOR_FRONT].has_below);
+    // нова подія отримує нову мітку
+    t += 50;
+    cycle(&c, t, low);
+    tof_core_view(&c, &v);
+    CHECK(v.sector[TOF_SECTOR_FRONT].has_below && v.sector[TOF_SECTOR_FRONT].below_ms == t);
 }
 
 int main(void)
@@ -448,5 +505,7 @@ int main(void)
     test_show_text();
     test_show_text_edge();
     test_hold_line();
+    test_first_below_timestamp();
+    test_single_spike_clears_below();
     return test_summary();
 }

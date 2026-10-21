@@ -188,6 +188,8 @@ typedef struct {
     bool tof_clamped;            // у такті прийнятої команди руху тягу в бік зайнятого сектору обрізано (spec AC-15)
     uint8_t hold_sector;         // для DRIVE_EVT_HOLD_ENTER: tof_sector_t зайнятого сектору
     uint16_t hold_mm;            // його відстань
+    bool hold_has_first;         // відома мітка першого відліку менше порога
+    uint32_t hold_first_ms;      // мітка першого відліку менше порога (початок відліку реакції, spec AC-01)
     int8_t hold_nearest;         // датчик з найменшою відстанню (tof_id_t) або −1
     bool trace_ready;            // накопичено кадр трасування (кожні PID_TRACE_TICKS тактів у ARMED)
     pid_trace_frame_t trace;

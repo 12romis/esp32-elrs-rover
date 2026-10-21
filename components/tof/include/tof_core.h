@@ -45,6 +45,8 @@ typedef struct {
 typedef struct {
     bool occupied;
     uint8_t free_count;      // скільки оновлень поспіль сектор не був зайнятий
+    bool below;              // у секторі є сирий відлік менше порога (ще не витіснений з кілець)
+    uint32_t below_ms;       // мітка першого такого відліку: початок відліку 250 мс «перешкода → нуль бортам» (spec AC-01)
 } tof_sector_state_t;
 
 typedef struct {
@@ -69,6 +71,8 @@ typedef struct {
     bool guarded;           // є хоч один працюючий датчик сектору
     uint16_t mm;            // відстань сектору (мінімум); TOF_OUT_OF_RANGE_MM, якщо всі поза діапазоном
     int8_t nearest;         // датчик з мінімальною відстанню (tof_id_t), -1 якщо немає
+    bool has_below;         // є сирий відлік менше порога, ще не витіснений з кілець (або сектор зайнятий)
+    uint32_t below_ms;      // мітка першого такого відліку
 } tof_view_sector_t;
 
 typedef struct {
@@ -111,8 +115,10 @@ const char *tof_sensor_name(tof_id_t id);
 // режим захисту. valid == false → «ініціалізація»; stale → «знімок застарів». Повертає довжину, завжди завершує нулем.
 size_t tof_fmt_show(char *buf, size_t n, const tof_view_t *v, bool stale);
 
-// Рядок входу в утримання: сектор, відстань, датчик, поріг.
-size_t tof_fmt_hold_line(char *buf, size_t n, tof_sector_t sector, uint16_t mm, int nearest);
+// Рядок входу в утримання: сектор, відстань, датчик, поріг; з has_first — мітка першого відліку менше порога, мітка такту,
+// що зупинив борти, і різниця (для перевірки «≤ 250 мс», spec AC-01).
+size_t tof_fmt_hold_line(char *buf, size_t n, tof_sector_t sector, uint16_t mm, int nearest, bool has_first, uint32_t first_ms,
+                         uint32_t now_ms);
 
 // Датчик належить сектору: передній — три передні, задній — U10.
 tof_sector_t tof_sector_of(tof_id_t id);

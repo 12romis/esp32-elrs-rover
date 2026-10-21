@@ -77,6 +77,11 @@ void tof_core_sample(tof_core_t *c, tof_id_t id, uint16_t mm, uint32_t now_ms)
     }
     s->last_valid_ms = now_ms;
     s->dirty = true;
+    tof_sector_state_t *sec = &c->sec[tof_sector_of(id)];
+    if (mm < TOF_OBSTACLE_MM && !sec->below) {   // перший сирий відлік менше порога — початок відліку реакції
+        sec->below = true;
+        sec->below_ms = now_ms;
+    }
     if (s->count < TOF_MEDIAN_N) {
         s->state = TOF_S_NOT_READY;
         return;
@@ -109,6 +114,22 @@ static void sector_calc(const tof_core_t *c, tof_sector_t sec, bool *guarded, ui
     }
 }
 
+// Чи лишився в кільцях датчиків сектору сирий відлік менше порога.
+static bool sector_has_low_raw(const tof_core_t *c, tof_sector_t sec)
+{
+    for (int i = 0; i < TOF_SENSORS; i++) {
+        if (tof_sector_of((tof_id_t)i) != sec || !timed(c->s[i].state)) {
+            continue;
+        }
+        for (int j = 0; j < c->s[i].count; j++) {
+            if (c->s[i].raw[j] < TOF_OBSTACLE_MM) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 void tof_core_tick(tof_core_t *c, uint32_t now_ms, tof_events_t *ev)
 {
     for (int i = 0; i < TOF_SENSORS; i++) {
@@ -127,6 +148,9 @@ void tof_core_tick(tof_core_t *c, uint32_t now_ms, tof_events_t *ev)
             }
         }
         tof_sector_state_t *st = &c->sec[k];
+        if (st->below && !st->occupied && !sector_has_low_raw(c, (tof_sector_t)k)) {
+            st->below = false;   // викид витіснено з кілець, перешкоди не було
+        }
         if (!guarded) {
             st->occupied = false;
             st->free_count = 0;
@@ -166,6 +190,8 @@ void tof_core_view(const tof_core_t *c, tof_view_t *v)
         sector_calc(c, (tof_sector_t)k, &guarded, &v->sector[k].mm, &v->sector[k].nearest);
         v->sector[k].guarded = guarded;
         v->sector[k].occupied = guarded && c->sec[k].occupied;
+        v->sector[k].has_below = c->sec[k].below;
+        v->sector[k].below_ms = c->sec[k].below_ms;
         v->protection = v->protection || guarded;
     }
 }
@@ -256,7 +282,8 @@ size_t tof_fmt_show(char *buf, size_t n, const tof_view_t *v, bool stale)
     return pos;
 }
 
-size_t tof_fmt_hold_line(char *buf, size_t n, tof_sector_t sector, uint16_t mm, int nearest)
+size_t tof_fmt_hold_line(char *buf, size_t n, tof_sector_t sector, uint16_t mm, int nearest, bool has_first, uint32_t first_ms,
+                         uint32_t now_ms)
 {
     if (buf == NULL || n == 0) {
         return 0;
@@ -266,5 +293,9 @@ size_t tof_fmt_hold_line(char *buf, size_t n, tof_sector_t sector, uint16_t mm, 
     append(buf, n, &pos, "ровер зупинено перед перешкодою: %s сектор %u мм (%s), поріг %d мм",
            sector == TOF_SECTOR_FRONT ? "передній" : "задній", (unsigned)mm,
            nearest >= 0 ? tof_sensor_name((tof_id_t)nearest) : "?", TOF_OBSTACLE_MM);
+    if (has_first) {
+        append(buf, n, &pos, "; перший відлік менше порога: %u мс, борти зупинено: %u мс (різниця %u мс)", (unsigned)first_ms,
+               (unsigned)now_ms, (unsigned)(now_ms - first_ms));
+    }
     return pos;
 }

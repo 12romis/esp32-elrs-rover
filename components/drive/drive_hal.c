@@ -250,8 +250,9 @@ static void log_events(const drive_ctl_out_t *o, const drive_ctl_in_t *in, uint3
                  (unsigned)DRIVE_ENC_STALE_MS);
     }
     if (o->events & DRIVE_EVT_HOLD_ENTER) {   // утримання перед перешкодою (phase6-tof): сектор, відстань, датчик, поріг
-        char line[160];
-        tof_fmt_hold_line(line, sizeof(line), (tof_sector_t)o->hold_sector, o->hold_mm, o->hold_nearest);
+        char line[320];   // рядок входу в утримання з мітками ≈ 280 байтів (UTF-8)
+        tof_fmt_hold_line(line, sizeof(line), (tof_sector_t)o->hold_sector, o->hold_mm, o->hold_nearest, o->hold_has_first,
+                          o->hold_first_ms, now);
         ESP_LOGW(TAG, "OBSTACLE_HOLD: %s", line);
     }
     if (o->events & DRIVE_EVT_HOLD_EXIT) {

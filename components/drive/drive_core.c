@@ -628,6 +628,8 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
             o->events |= DRIVE_EVT_HOLD_ENTER;
             o->hold_sector = c->occ_front ? TOF_SECTOR_FRONT : TOF_SECTOR_REAR;
             o->hold_mm = s->mm;
+            o->hold_has_first = s->has_below;
+            o->hold_first_ms = s->below_ms;
             o->hold_nearest = s->nearest;
         } else if (in->state == APP_STATE_OBSTACLE_HOLD && !c->occ_front && !c->occ_rear) {
             o->has_state_request = true;
