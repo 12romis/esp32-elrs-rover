@@ -9,8 +9,8 @@ files_hint: ["main/main.c", "main/CMakeLists.txt"]
 owner: "Агент"
 estimate: "S"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T13 — Підключити в main старт tof і колбеки консолі tof_show та tof_reinit

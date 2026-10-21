@@ -275,7 +275,7 @@
         "main/CMakeLists.txt"
       ],
       "file": "docs/features/phase6-tof/tasks/t13-wire-main-tof-console.md",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T14",
