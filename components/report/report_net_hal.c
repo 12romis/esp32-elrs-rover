@@ -78,11 +78,40 @@ const char *report_net_config_problem(void)
 #endif
 }
 
+static const char *disconnect_text(int reason)
+{
+    switch (reason) {
+    case WIFI_REASON_NO_AP_FOUND:
+        return "мережу не знайдено: назва чи діапазон 5 ГГц";
+    case WIFI_REASON_AUTH_FAIL:
+    case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
+    case WIFI_REASON_HANDSHAKE_TIMEOUT:
+        return "помилка автентифікації: ймовірно невірний пароль";
+    case WIFI_REASON_AUTH_EXPIRE:
+        return "автентифікація прострочена";
+    case WIFI_REASON_BEACON_TIMEOUT:
+        return "втрачено сигнал точки доступу";
+    case WIFI_REASON_ASSOC_FAIL:
+    case WIFI_REASON_CONNECTION_FAIL:
+        return "точка доступу відхилила підключення";
+    case WIFI_REASON_NO_AP_FOUND_IN_AUTHMODE_THRESHOLD:
+        return "мережа знайдена, але режим захисту слабший за WPA2";
+    case WIFI_REASON_NO_AP_FOUND_W_COMPATIBLE_SECURITY:
+        return "мережа знайдена, але режим захисту несумісний";
+    default:
+        return "інша причина";
+    }
+}
+
 static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     (void)arg;
-    (void)data;
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+        const wifi_event_sta_disconnected_t *d = data;
+        // Причина відключення без SSID і пароля: розрізняє «мережу не знайдено», «невірний пароль», «WPA3-лише» тощо.
+        if (s_wifi_on)
+        ESP_LOGW(TAG, "Wi-Fi: немає з'єднання, причина %d (%s), спроба %d з %d", d ? d->reason : -1, d ? disconnect_text(d->reason) : "?",
+                 s_retries + 1, WIFI_RETRIES + 1);
         if (s_wifi_on && s_retries < WIFI_RETRIES) {
             s_retries++;
             esp_wifi_connect();
@@ -249,6 +278,7 @@ static report_outcome_t write_all(const report_net_t *ctx, const uint8_t *buf, s
 }
 
 static uint32_t s_mqtt_deadline_ms;
+static char s_host[64];   // ім'я сервера без схеми, порту й шляху
 
 report_outcome_t report_net_mqtt_open(const report_net_t *ctx)
 {
@@ -257,6 +287,10 @@ report_outcome_t report_net_mqtt_open(const report_net_t *ctx)
     return REPORT_OUT_NO_CONFIG;     // без кореневого сертифіката дані не надсилаються
 #else
     tls_close();
+    if (!mqtt_core_host_normalize(REPORT_MQTT_HOST, s_host, sizeof(s_host))) {
+        ESP_LOGW(TAG, "адреса сервера в report_secrets.h порожня чи задовга");
+        return REPORT_OUT_NO_CONFIG;
+    }
     s_tls = esp_tls_init();
     if (s_tls == NULL) {
         return REPORT_OUT_NO_NETWORK;
@@ -268,14 +302,14 @@ report_outcome_t report_net_mqtt_open(const report_net_t *ctx)
     cfg.cacert_bytes = (unsigned int)(root_ca_pem_end - root_ca_pem_start);
     cfg.non_block = true;
     cfg.timeout_ms = MQTT_LIMIT_MS;
-    cfg.common_name = REPORT_MQTT_HOST;      // ім'я сервера має збігатися з сертифікатом
+    cfg.common_name = s_host;      // ім'я сервера має збігатися з сертифікатом
     TickType_t last = xTaskGetTickCount();
     for (;;) {
         if (!ctx->allow()) {
             tls_close();
             return REPORT_OUT_ABORTED;
         }
-        int rc = esp_tls_conn_new_async(REPORT_MQTT_HOST, (int)strlen(REPORT_MQTT_HOST), REPORT_MQTT_PORT, &cfg, s_tls);
+        int rc = esp_tls_conn_new_async(s_host, (int)strlen(s_host), REPORT_MQTT_PORT, &cfg, s_tls);
         if (rc == 1) {
             break;
         }

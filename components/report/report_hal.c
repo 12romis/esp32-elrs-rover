@@ -261,6 +261,12 @@ esp_err_t report_start(void)
         return err;
     }
     session_hal_raise_next_seq(next_seq);
+    // Бібліотека Wi-Fi друкує ≈ 35 інформаційних рядків на кожну спробу й заглушає наші: лишаємо лише попередження й помилки.
+    // Результат спроби й причину відключення пише сам report.
+    static const char *const noisy[] = {"wifi", "wifi_init", "pp", "net80211", "esp_netif_handlers"};
+    for (size_t i = 0; i < sizeof(noisy) / sizeof(noisy[0]); i++) {
+        esp_log_level_set(noisy[i], ESP_LOG_WARN);
+    }
     report_net_init();
     if (xTaskCreatePinnedToCore(report_task, "report", REPORT_STACK, NULL, REPORT_PRIORITY, NULL, REPORT_CORE) != pdPASS) {
         ESP_LOGE(TAG, "не вдалося створити задачу report");

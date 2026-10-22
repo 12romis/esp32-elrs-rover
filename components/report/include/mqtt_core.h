@@ -41,3 +41,7 @@ int mqtt_core_puback_matches(const uint8_t *buf, size_t len, uint16_t expected_i
 
 // Пояснення коду CONNACK українською для журналу (без секретів).
 const char *mqtt_core_connack_text(uint8_t rc);
+
+// Ім'я сервера для DNS і перевірки сертифіката з рядка налаштувань: відкидає схему (`mqtts://`, `ssl://`, `tls://`),
+// порт (`:8883`; порт задається окремо) і шлях. false — порожнє чи не вміщується в out.
+int mqtt_core_host_normalize(const char *in, char *out, size_t n);

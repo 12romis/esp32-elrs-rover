@@ -201,3 +201,27 @@ const char *mqtt_core_connack_text(uint8_t rc)
         return "невідомий код відповіді";
     }
 }
+
+int mqtt_core_host_normalize(const char *in, char *out, size_t n)
+{
+    if (in == NULL || out == NULL || n == 0) {
+        return 0;
+    }
+    while (*in == ' ' || *in == '\t') {
+        in++;
+    }
+    const char *scheme = strstr(in, "://");
+    if (scheme != NULL) {
+        in = scheme + 3;
+    }
+    size_t len = 0;
+    while (in[len] != '\0' && in[len] != '/' && in[len] != ':' && in[len] != ' ') {
+        len++;
+    }
+    if (len == 0 || len + 1 > n) {
+        return 0;
+    }
+    memcpy(out, in, len);
+    out[len] = '\0';
+    return 1;
+}

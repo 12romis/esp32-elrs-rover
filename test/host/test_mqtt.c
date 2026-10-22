@@ -176,8 +176,22 @@ static void test_password_only_in_connect(void)
     CHECK(!contains(pub, pn, pass) && !contains(dis, dn, pass));
 }
 
+static void test_host_normalize(void)
+{
+    char out[64];
+    CHECK(mqtt_core_host_normalize("mqtt.romis.cloud", out, sizeof(out)) && strcmp(out, "mqtt.romis.cloud") == 0);
+    CHECK(mqtt_core_host_normalize("mqtts://mqtt.romis.cloud", out, sizeof(out)) && strcmp(out, "mqtt.romis.cloud") == 0);
+    CHECK(mqtt_core_host_normalize("ssl://h.example:8883/", out, sizeof(out)) && strcmp(out, "h.example") == 0);
+    CHECK(mqtt_core_host_normalize("  tls://h.example/path", out, sizeof(out)) && strcmp(out, "h.example") == 0);
+    CHECK(mqtt_core_host_normalize("192.168.0.5", out, sizeof(out)) && strcmp(out, "192.168.0.5") == 0);
+    CHECK(!mqtt_core_host_normalize("", out, sizeof(out)) && !mqtt_core_host_normalize("mqtts://", out, sizeof(out)));
+    CHECK(!mqtt_core_host_normalize(NULL, out, sizeof(out)) && !mqtt_core_host_normalize("h", out, 0));
+    CHECK(!mqtt_core_host_normalize("a-very-long-host.example", out, 8));          // не вміщується
+}
+
 int main(void)
 {
+    test_host_normalize();
     test_connect_reference();
     test_connect_rejects_bad_args();
     test_publish_reference();
