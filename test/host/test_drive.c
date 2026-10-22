@@ -38,11 +38,11 @@ static void test_outputs_from(void)
     CHECK(o.left.duty_permille == 300 && o.left.dir1 == 1 && o.left.dir2 == 0);
     CHECK(o.right.duty_permille == 300 && o.right.dir1 == 1 && o.right.dir2 == 0);
 
-    // 0.8 / 0.5 → 1.0 і 0.2308 → насичення 750 і 231 проміле (AC-04)
+    // 0.8 / 0.5 → 1.0 і 0.2308 → насичення 950 і 231 проміле (AC-04)
     float l, r;
     drive_mix(0.8f, 0.5f, &l, &r);
     o = drive_outputs_from(l, r);
-    CHECK(o.left.duty_permille == 750);
+    CHECK(o.left.duty_permille == 950);
     CHECK(o.right.duty_permille == 231);
 
     // Поворот на місці: ліве вперед, праве назад (AC-04)
@@ -54,19 +54,19 @@ static void test_outputs_from(void)
 
 static void test_cap(void)
 {
-    CHECK(DRIVE_PWM_MAX_PERMILLE == 750);
+    CHECK(DRIVE_PWM_MAX_PERMILLE == 950);
     drive_outputs_t o = drive_outputs_from(1.0f, 1.0f);
-    CHECK(o.left.duty_permille == 750 && o.right.duty_permille == 750);
+    CHECK(o.left.duty_permille == 950 && o.right.duty_permille == 950);
     o = drive_outputs_from(-1.0f, -1.0f);
-    CHECK(o.left.duty_permille == 750 && o.left.dir1 == 0 && o.left.dir2 == 1);
-    CHECK(o.right.duty_permille == 750 && o.right.dir1 == 0 && o.right.dir2 == 1);
-    // жодна комбінація входу в [−1, +1] не дає більше 750
+    CHECK(o.left.duty_permille == 950 && o.left.dir1 == 0 && o.left.dir2 == 1);
+    CHECK(o.right.duty_permille == 950 && o.right.dir1 == 0 && o.right.dir2 == 1);
+    // жодна комбінація входу в [−1, +1] не дає більше 950
     for (int i = -10; i <= 10; i++) {
         for (int j = -10; j <= 10; j++) {
             float l, r;
             drive_mix((float)i / 10.0f, (float)j / 10.0f, &l, &r);
             o = drive_outputs_from(l, r);
-            CHECK(o.left.duty_permille <= 750 && o.right.duty_permille <= 750);
+            CHECK(o.left.duty_permille <= 950 && o.right.duty_permille <= 950);
         }
     }
 }
@@ -693,9 +693,9 @@ static void test_remote_driving(void)
     CHECK(o.out.stby == 1 && o.left_permille > 0 && o.left_permille == o.right_permille);
     CHECK(o.out.left.dir1 == 1 && o.out.left.dir2 == 0 && o.out.right.dir1 == 1);
     int16_t half = o.left_permille;
-    // Далі стік — швидше, до обмеження 0.75.
+    // Далі стік — швидше, до обмеження 0.95.
     o = go_rc(&c, APP_STATE_ARMED, t + 40, snap(8000, t + 40), rc_raw(t + 40, 6, NEUT, 1650, SW_ARM), DRIVE_REQ_NONE, 0, 0);
-    CHECK(o.left_permille > half && o.left_permille <= 750);
+    CHECK(o.left_permille > half && o.left_permille <= 950);
     // Назад: обидва борти назад.
     o = go_rc(&c, APP_STATE_ARMED, t + 60, snap(8000, t + 60), rc_raw(t + 60, 7, NEUT, 400, SW_ARM), DRIVE_REQ_NONE, 0, 0);
     CHECK(o.left_permille < 0 && o.right_permille < 0 && o.out.left.dir1 == 0 && o.out.left.dir2 == 1);
@@ -705,13 +705,13 @@ static void test_remote_driving(void)
     // Ліворуч — дзеркально.
     o = go_rc(&c, APP_STATE_ARMED, t + 100, snap(8000, t + 100), rc_raw(t + 100, 9, 180, NEUT, SW_ARM), DRIVE_REQ_NONE, 0, 0);
     CHECK(o.left_permille < 0 && o.right_permille > 0);
-    // Упор і діагональ: жоден борт понад 750 (AC-02).
+    // Упор і діагональ: жоден борт понад 950 (AC-02).
     uint16_t ext[] = {172, 992, 1811, 1808};
     for (int a = 0; a < 4; a++) {
         for (int b = 0; b < 4; b++) {
             o = go_rc(&c, APP_STATE_ARMED, t + 120, snap(8000, t + 120), rc_raw(t + 120, 10, ext[a], ext[b], SW_ARM), DRIVE_REQ_NONE, 0, 0);
-            CHECK(o.left_permille <= 750 && o.left_permille >= -750 && o.right_permille <= 750 && o.right_permille >= -750);
-            CHECK(o.out.left.duty_permille <= 750 && o.out.right.duty_permille <= 750);
+            CHECK(o.left_permille <= 950 && o.left_permille >= -950 && o.right_permille <= 950 && o.right_permille >= -950);
+            CHECK(o.out.left.duty_permille <= 950 && o.out.right.duty_permille <= 950);
         }
     }
     // Мертва зона дає нуль.
@@ -1144,7 +1144,7 @@ static void test_pid_off_is_phase4(void)
     pid_set_init(&none);
     t = bench_armed(&c, none, 3000);
     o = go_pid(&c, APP_STATE_ARMED, t, DRIVE_REQ_DRIVE, 0.6f, -0.2f, none, enc_all(0.0f, 2, t));
-    CHECK(o.left_permille == 400 && o.right_permille == 750);
+    CHECK(o.left_permille == 400 && o.right_permille == 800);
 }
 
 static void test_pid_mode_latched(void)
@@ -1599,7 +1599,7 @@ static void test_tof_rear_blocks_reverse_only(void)
 
 static void test_tof_pult_path_and_power_limit(void)
 {
-    // пульт: стік уперед на повну, передній сектор зайнятий → нуль; потужність ніколи понад 750
+    // пульт: стік уперед на повну, передній сектор зайнятий → нуль; потужність ніколи понад 950
     drive_ctl_t c;
     drive_ctl_init(&c);
     uint32_t t0 = ready_disarmed(&c, 1000);
@@ -1610,7 +1610,7 @@ static void test_tof_pult_path_and_power_limit(void)
         in.rc = rc_raw(t, seq++, NEUT, 1792, SW_ARM);
         in.tof = tv(t, t >= t0 + 60, false);
         drive_ctl_step(&c, &in, &o);
-        CHECK(o.out.left.duty_permille <= 750 && o.out.right.duty_permille <= 750);
+        CHECK(o.out.left.duty_permille <= 950 && o.out.right.duty_permille <= 950);
         if (t < t0 + 60) {
             CHECK(o.left_permille > 0 && o.right_permille > 0);
         } else {

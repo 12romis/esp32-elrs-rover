@@ -450,13 +450,13 @@ static void test_hold_rear_auto_and_double_beep_transitions(void)
     CHECK(!o.red && o.green);                           // назад: лише зелений, як в ARMED
     CHECK(!o.buzzer_on);
     o = tick(&u, 900, APP_STATE_ARMED, -300, -300, true);
-    CHECK(o.head && o.buzzer_on);                       // вихід в ARMED — подвійний біп; фари не чіпає
+    CHECK(o.head && o.buzzer_on);                       // вихід в ARMED — одинарний сигнал 200 мс (коміт bc4aedd); фари не чіпає
     CHECK(o.indicator == UI_IND_OFF);                   // індикатор гасне
     CHECK(!o.red && o.green);
     o = tick(&u, 1000, APP_STATE_ARMED, -300, -300, true);
-    CHECK(!o.buzzer_on);
-    o = tick(&u, 1100, APP_STATE_ARMED, -300, -300, true);
     CHECK(o.buzzer_on);
+    o = tick(&u, 1100, APP_STATE_ARMED, -300, -300, true);
+    CHECK(!o.buzzer_on);
     o = tick(&u, 1200, APP_STATE_ARMED, -300, -300, true);
     CHECK(!o.buzzer_on);
     CHECK(ui_core_remaining_ms(&u, 1200) == 0);
@@ -563,7 +563,7 @@ static void test_double_beep_no_overlap(void)
     o = tick(&u, 700, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
     CHECK(!o.buzzer_on);                                           // біп скінчився, нового не було
     o = tick(&u, 800, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
-    CHECK(!o.buzzer_on);
+    CHECK(o.buzzer_on);                                           // повторний вхід в утримання почав новий подвійний біп (коміт bc4aedd)
 }
 
 static void test_double_beep_replaced_by_disarm_signal(void)
@@ -586,12 +586,12 @@ static void test_double_beep_manual_beep_waits_in_slot(void)
     settle(&u, 0, APP_STATE_DISARMED);
     tick(&u, 200, APP_STATE_ARMED, 0, 0, true);
     tick(&u, 400, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
-    tick(&u, 800, APP_STATE_ARMED, 0, 0, true);                    // вихідний подвійний біп 800…1100
+    tick(&u, 800, APP_STATE_ARMED, 0, 0, true);                    // вихідний одинарний сигнал 800…1000
     bool queued = false;
     CHECK(ui_core_beep(&u, 2000, 500, 850, APP_STATE_ARMED, &queued) == UI_OK && queued);   // чекає в слоті
-    ui_out_t o = tick(&u, 1000, APP_STATE_ARMED, 0, 0, true);
+    ui_out_t o = tick(&u, 900, APP_STATE_ARMED, 0, 0, true);
     CHECK(o.buzzer_on && o.buzzer_hz == HZ);                       // біп не вкорочено
-    o = tick(&u, 1100, APP_STATE_ARMED, 0, 0, true);
+    o = tick(&u, 1000, APP_STATE_ARMED, 0, 0, true);
     CHECK(o.buzzer_on && o.buzzer_hz == 2000);                     // після біпа звучить ручний
 }
 

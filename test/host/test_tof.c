@@ -44,7 +44,7 @@ static void free_all(tof_core_t *c, uint32_t *t, int n)
 
 static void test_constants(void)
 {
-    CHECK(TOF_OBSTACLE_MM == 170);
+    CHECK(TOF_OBSTACLE_MM == 190);
     CHECK(TOF_MEDIAN_N == 3);
     CHECK(TOF_FAIL_MS == 250);
     CHECK(tof_sector_of(TOF_LEFT_FRONT) == TOF_SECTOR_FRONT);
@@ -386,12 +386,12 @@ static void test_show_text(void)
     v.valid = true;
     size_t n = tof_fmt_show(buf, sizeof(buf), &v, false);
     CHECK(n > 0 && n < sizeof(buf) && n == strlen(buf));
-    CHECK(strstr(buf, "170") != NULL);                       // поріг
+    CHECK(strstr(buf, "190") != NULL);                       // поріг
     CHECK(strstr(buf, "412") != NULL);
     CHECK(strstr(buf, "150") != NULL);
     CHECK(strstr(buf, "поза діапазоном") != NULL);
     CHECK(strstr(buf, "відмова") != NULL);
-    CHECK(strstr(buf, "зайнятий") != NULL);                  // передній сектор: 150 < 170
+    CHECK(strstr(buf, "зайнятий") != NULL);                  // передній сектор: 150 < 190
     CHECK(strstr(buf, "не охороняється") != NULL);           // задній без справних датчиків
     CHECK(strstr(buf, "8190") == NULL);                      // сире число «поза діапазоном» не друкується
 }
@@ -419,7 +419,7 @@ static void test_hold_line(void)
     CHECK(n > 0 && n == strlen(buf));
     CHECK(strstr(buf, "перед") != NULL);                     // «передній»
     CHECK(strstr(buf, "150") != NULL);
-    CHECK(strstr(buf, "170") != NULL);                       // поріг
+    CHECK(strstr(buf, "190") != NULL);                       // поріг
     CHECK(strstr(buf, "U8") != NULL);
     CHECK(strstr(buf, "1000") != NULL && strstr(buf, "1096") != NULL && strstr(buf, "різниця 96 мс") != NULL);   // мітки й затримка (review R3)
     tof_fmt_hold_line(buf, sizeof(buf), TOF_SECTOR_FRONT, 150, TOF_FRONT, true, 0xFFFFFFF0u, 0x50u);   // переповнення годинника
