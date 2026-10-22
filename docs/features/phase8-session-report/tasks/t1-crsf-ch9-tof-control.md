@@ -9,8 +9,8 @@ files_hint: ["components/crsf/crsf_core.c", "components/crsf/include/crsf_core.h
 owner: "Агент"
 estimate: "S"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T1 — Додати в crsf_core канал CH9 і функцію «контроль перешкод увімкнено» зі значенням за замовчуванням

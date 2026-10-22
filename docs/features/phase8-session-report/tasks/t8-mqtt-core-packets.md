@@ -9,8 +9,8 @@ files_hint: ["components/report/mqtt_core.c", "components/report/include/mqtt_co
 owner: "Агент"
 estimate: "M"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T8 — Створити mqtt_core: кодування CONNECT, PUBLISH (QoS 1), DISCONNECT і розбір CONNACK та PUBACK для MQTT 3.1.1

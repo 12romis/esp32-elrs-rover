@@ -9,8 +9,8 @@ files_hint: ["components/report/report_core.c", "components/report/include/repor
 owner: "Агент"
 estimate: "M"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T7 — Створити report_core: документ звіту сесії у форматі events.md з явними null і межею 1024 байти

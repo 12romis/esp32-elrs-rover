@@ -9,8 +9,8 @@ files_hint: ["components/session/session_core.c", "components/session/include/se
 owner: "Агент"
 estimate: "M"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T6 — Додати в session_core пробіг, час руху, середню й пікову швидкість бортів і дисбаланс із явним «немає даних»

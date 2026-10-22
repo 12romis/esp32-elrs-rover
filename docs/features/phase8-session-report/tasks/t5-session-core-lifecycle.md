@@ -9,8 +9,8 @@ files_hint: ["components/session/session_core.c", "components/session/include/se
 owner: "Агент"
 estimate: "M"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T5 — Створити session_core: межі сесії за станом, причина завершення, напруга, утримання за датчиками, час із вимкненим контролем, номер і тривалість

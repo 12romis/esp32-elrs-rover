@@ -9,8 +9,8 @@ files_hint: ["components/drive/drive_core.c", "components/drive/include/drive_co
 owner: "Агент"
 estimate: "M"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T3 — Додати в drive_core вхід «режим контролю» і подавити зайнятість секторів, коли режим вимкнено, з подіями зміни режиму й охорони

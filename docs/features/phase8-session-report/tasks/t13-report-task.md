@@ -9,8 +9,8 @@ files_hint: ["components/report/report_hal.c", "components/report/include/report
 owner: "Агент"
 estimate: "M"
 context_budget: "M"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T13 — Створити report_hal: задачу report на core 0 з спробою передачі при вході в DISARMED, скасуванням озброєнням і записом результатів

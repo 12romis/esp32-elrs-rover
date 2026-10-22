@@ -9,8 +9,8 @@ files_hint: ["components/session/CMakeLists.txt", "components/session/include/",
 owner: "Агент"
 estimate: "S"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T0 — Створити каркаси компонентів session і report: CMake, заголовки й порожні заглушки core/hal, що збираються без попереджень

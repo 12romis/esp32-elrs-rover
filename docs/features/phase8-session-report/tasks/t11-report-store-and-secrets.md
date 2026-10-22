@@ -9,8 +9,8 @@ files_hint: ["components/report/report_store_hal.c", "components/report/include/
 owner: "Агент"
 estimate: "M"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T11 — Створити report_store_hal і налаштування мережі: NVS-кільце звітів одним записом, версія й git образу, локальний файл секретів, сертифікат, зміни сборки

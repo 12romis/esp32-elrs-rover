@@ -59,7 +59,7 @@ updated_at: "2026-10-21"
 | 5 | `phase5-pid` — борт тримає задану швидкість під навантаженням, коефіцієнти міняються з консолі | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 5 — PID» | S | shipped — [spec](features/phase5-pid/spec.md) |
 | 6 | `phase6-tof` — ровер зупиняється перед перешкодою, дозволяє здати назад, переживає відмову сенсора | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 6 — далекоміри й протизіткнення» | S | shipped — [spec](features/phase6-tof/spec.md) |
 | 7 | `phase7-telemetry` — пульт бачить напругу батареї, OBSTACLE_HOLD чути й видно (подвійний біп, жовтий індикатор, блимання фар і ліхтарів), є README, блок-схема й заповнений чекліст | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 7 — телеметрія, інтеграція, документація»; запит Розробника 2026-10-21 (індикація OBSTACLE_HOLD) | S | shipped — [spec](features/phase7-telemetry/spec.md) |
-| 8 | `phase8-session-report` — тумблер CH9 вмикає/вимикає контроль перешкод (зеленуватий індикатор), консоль називає всі датчики, що бачать перешкоду; після роззброєння ровер надсилає звіт сесії (JSON) через Wi-Fi і MQTT, Wi-Fi вимикається одразу, при невдачі лишаються дві останні сесії | запит Розробника 2026-10-22 | M | spec'd — [spec](features/phase8-session-report/spec.md) |
+| 8 | `phase8-session-report` — тумблер CH9 вмикає/вимикає контроль перешкод (зеленуватий індикатор), консоль називає всі датчики, що бачать перешкоду; після роззброєння ровер надсилає звіт сесії (JSON) через Wi-Fi і MQTT, Wi-Fi вимикається одразу, при невдачі лишаються дві останні сесії | запит Розробника 2026-10-22 | M | shipped 2026-10-22 — [changelog](features/phase8-session-report/changelog.md), [spec](features/phase8-session-report/spec.md) |
 
 ## Not yet specified
 
@@ -170,3 +170,5 @@ flowchart LR
 | 5 `phase5-pid` | 2026-10-20 | [changelog](features/phase5-pid/changelog.md) (приймання на залізі AC-01, -02, -05, -06, -10, -13, -14 і KPI відкладено Розробником — `acceptance.md`) |
 | 6 `phase6-tof` | 2026-10-21 | [changelog](features/phase6-tof/changelog.md) (приймання на залізі AC-01…AC-12, AC-14…AC-16, KPI і OQ-2 відкладено Розробником — `acceptance.md`) |
 | 7 `phase7-telemetry` | 2026-10-21 | [changelog](features/phase7-telemetry/changelog.md) (приймання на залізі AC-01…AC-16, KPI, OQ-1, OQ-3, OQ-4 чекають Розробника — `acceptance.md`) |
+
+| 8 `phase8-session-report` | 2026-10-22 | [changelog](features/phase8-session-report/changelog.md) (приймання на залізі, OQ-5, OQ-6, OQ-7 чекають Розробника — `acceptance.md`) |

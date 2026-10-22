@@ -25,7 +25,8 @@
         "components/report/report_hal.c"
       ],
       "file": "docs/features/phase8-session-report/tasks/t0-component-skeletons.md",
-      "status": "todo"
+      "status": "done",
+      "step": "COMMIT"
     },
     {
       "id": "T1",
@@ -43,7 +44,8 @@
         "test/host/test_crsf.c"
       ],
       "file": "docs/features/phase8-session-report/tasks/t1-crsf-ch9-tof-control.md",
-      "status": "todo"
+      "status": "done",
+      "step": "COMMIT"
     },
     {
       "id": "T2",
@@ -61,7 +63,8 @@
         "test/host/test_tof.c"
       ],
       "file": "docs/features/phase8-session-report/tasks/t2-tof-below-mask-and-hold-line.md",
-      "status": "todo"
+      "status": "done",
+      "step": "COMMIT"
     },
     {
       "id": "T3",
@@ -82,7 +85,8 @@
         "test/host/test_drive.c"
       ],
       "file": "docs/features/phase8-session-report/tasks/t3-drive-core-tof-mode-gate.md",
-      "status": "todo"
+      "status": "done",
+      "step": "COMMIT"
     },
     {
       "id": "T4",
@@ -104,7 +108,8 @@
         "test/host/test_ui.c"
       ],
       "file": "docs/features/phase8-session-report/tasks/t4-ui-green-indicator.md",
-      "status": "todo"
+      "status": "done",
+      "step": "COMMIT"
     },
     {
       "id": "T5",
@@ -124,7 +129,8 @@
         "test/host/test_session.c"
       ],
       "file": "docs/features/phase8-session-report/tasks/t5-session-core-lifecycle.md",
-      "status": "todo"
+      "status": "done",
+      "step": "COMMIT"
     },
     {
       "id": "T6",
@@ -144,7 +150,8 @@
         "test/host/test_session.c"
       ],
       "file": "docs/features/phase8-session-report/tasks/t6-session-core-motion-stats.md",
-      "status": "todo"
+      "status": "done",
+      "step": "COMMIT"
     },
     {
       "id": "T7",
@@ -164,7 +171,8 @@
         "test/host/test_report.c"
       ],
       "file": "docs/features/phase8-session-report/tasks/t7-report-core-json.md",
-      "status": "todo"
+      "status": "done",
+      "step": "COMMIT"
     },
     {
       "id": "T8",
@@ -183,7 +191,8 @@
         "test/host/test_mqtt.c"
       ],
       "file": "docs/features/phase8-session-report/tasks/t8-mqtt-core-packets.md",
-      "status": "todo"
+      "status": "done",
+      "step": "COMMIT"
     },
     {
       "id": "T9",
@@ -204,7 +213,8 @@
         "test/host/test_report_queue.c"
       ],
       "file": "docs/features/phase8-session-report/tasks/t9-report-queue-core.md",
-      "status": "todo"
+      "status": "done",
+      "step": "COMMIT"
     },
     {
       "id": "T10",
@@ -226,7 +236,8 @@
         "components/drive/CMakeLists.txt"
       ],
       "file": "docs/features/phase8-session-report/tasks/t10-drive-hal-session-wiring.md",
-      "status": "todo"
+      "status": "done",
+      "step": "COMMIT"
     },
     {
       "id": "T11",
@@ -253,7 +264,8 @@
         "docs/features/phase8-session-report/protected-changes.md"
       ],
       "file": "docs/features/phase8-session-report/tasks/t11-report-store-and-secrets.md",
-      "status": "todo"
+      "status": "done",
+      "step": "COMMIT"
     },
     {
       "id": "T12",
@@ -272,7 +284,8 @@
         "components/report/include/report_net_hal.h"
       ],
       "file": "docs/features/phase8-session-report/tasks/t12-report-net-hal.md",
-      "status": "todo"
+      "status": "done",
+      "step": "COMMIT"
     },
     {
       "id": "T13",
@@ -294,7 +307,8 @@
         "components/report/include/report_hal.h"
       ],
       "file": "docs/features/phase8-session-report/tasks/t13-report-task.md",
-      "status": "todo"
+      "status": "done",
+      "step": "COMMIT"
     },
     {
       "id": "T14",
@@ -317,7 +331,8 @@
         "test/host/test_console.c"
       ],
       "file": "docs/features/phase8-session-report/tasks/t14-console-report-command.md",
-      "status": "todo"
+      "status": "done",
+      "step": "COMMIT"
     },
     {
       "id": "T15",
@@ -337,7 +352,8 @@
         "test/host/run_tests.sh"
       ],
       "file": "docs/features/phase8-session-report/tasks/t15-host-guardrails.md",
-      "status": "todo"
+      "status": "done",
+      "step": "COMMIT"
     },
     {
       "id": "T16",
@@ -355,7 +371,8 @@
         "docs/measured.md"
       ],
       "file": "docs/features/phase8-session-report/tasks/t16-docs-update.md",
-      "status": "todo"
+      "status": "done",
+      "step": "COMMIT"
     },
     {
       "id": "T17",
@@ -377,7 +394,8 @@
         "docs/features/phase8-session-report/acceptance.md"
       ],
       "file": "docs/features/phase8-session-report/tasks/t17-acceptance-checklist.md",
-      "status": "todo"
+      "status": "done",
+      "step": "COMMIT"
     }
   ]
 }

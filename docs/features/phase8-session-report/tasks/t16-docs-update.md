@@ -9,8 +9,8 @@ files_hint: ["README.md", "docs/architecture.md", "docs/self-check.md", "docs/me
 owner: "Агент"
 estimate: "S"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T16 — Оновити README, архітектурну діаграму й самоперевірку: режим CH9, індикатор, звіт сесії, налаштування мережі, відомі обмеження

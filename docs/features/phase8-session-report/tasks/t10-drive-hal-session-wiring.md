@@ -9,8 +9,8 @@ files_hint: ["components/drive/drive_hal.c", "components/session/session_hal.c",
 owner: "Агент"
 estimate: "M"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T10 — Підʼєднати session до drive_hal: виклик session_step наприкінці кроку керування, подачу підсумку в чергу й логування подій режиму
