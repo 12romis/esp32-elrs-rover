@@ -28,6 +28,10 @@ typedef struct {
     // --- phase7-telemetry (ADR-0002): сектори, зайняті в останньому такті control (копія ctl.occ_* без умови стану) ---
     bool occ_front;
     bool occ_rear;
+    // --- phase8-session-report (ADR-0005): режим контролю перешкод ---
+    bool tof_control_on;      // режим ввімкнений (CH9; за замовчуванням ввімкнений)
+    bool tof_guarding;        // режим ввімкнений і хоч один сектор реально охороняється
+    bool tof_control_default; // режим ввімкнений за замовчуванням: кадру пульта ще не було чи зв'язок втрачено
 } drive_status_t;
 
 typedef struct {

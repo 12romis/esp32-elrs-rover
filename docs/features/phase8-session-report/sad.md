@@ -134,7 +134,7 @@ docs/measured.md              + (Розробник) положення CH9, TP3
 sdkconfig.defaults            + розмір розділу застосунку, прив'язка Wi-Fi-стека до core 0 (дозволено, spec A22)
 ```
 
-**Документ звіту (поля; точні назви фіксує `api`):** `seq`, `duration_ms`, `end_reason`, `voltage_start_mv`, `voltage_end_mv`, `voltage_min_mv`, `holds{count,total_ms,min_mm,min_sensor,by_sensor[4]}`, `tof_control_off_ms`, `distance_cm`, `moving_ms`, `speed{left_avg_rpm,left_peak_rpm,right_avg_rpm,right_peak_rpm,imbalance_pct}` (відсутнє → `null`), `fw{version,git,idf,mac}`; розмір ≤ 1024 байти.
+**Документ звіту (поля; точні назви фіксує `api`):** `seq`, `duration_ms`, `end_reason`, `voltage_start_mv`, `voltage_end_mv`, `voltage_min_mv`, `holds{count,total_ms,min_mm,min_sensor,by_sensor[4]}`, `tof_control_off_ms`, `distance_cm`, `moving_ms`, `speed{left_avg_rpm,left_peak_rpm,right_avg_rpm,right_peak_rpm,imbalance_pct}` (відсутнє → `null`), `encoders{left,right}`, `fw{version,git,idf}`, `mac`; розмір ≤ 1024 байти.
 
 **C4 Container (L2):**
 

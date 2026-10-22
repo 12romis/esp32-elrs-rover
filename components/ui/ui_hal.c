@@ -143,7 +143,8 @@ static void indicator_set(ui_indicator_t colour)
     // GRB: червоний — (0, рівень, 0); жовтий — червоний і зелений разом (рівень, рівень, 0), phase7-telemetry A8; вимкнено — (0, 0, 0).
     // Невдала передача повториться на наступному такті.
     // uint8_t g = colour == UI_IND_YELLOW ? UI_INDICATOR_LEVEL : 0;
-    uint8_t g = colour == UI_IND_YELLOW ? UI_INDICATOR_LEVEL / 4 : 0;
+    // Зелений (phase8 A3): лише зелений канал на рівні UI_INDICATOR_LEVEL, байти GRB (рівень, 0, 0).
+    uint8_t g = colour == UI_IND_YELLOW ? UI_INDICATOR_LEVEL / 4 : (colour == UI_IND_GREEN ? UI_INDICATOR_LEVEL : 0);
     uint8_t r = (colour == UI_IND_RED || colour == UI_IND_YELLOW) ? UI_INDICATOR_LEVEL : 0;
     if (indicator_send(g, r, 0)) {
         s_indicator_col = colour;
@@ -256,6 +257,8 @@ static void run_tick(void)
         .expander_ok = ioexp_hal_available(),
         .front_occupied = ds.occ_front,   // прапорці секторів із control (ADR-0002); блимання лише в OBSTACLE_HOLD
         .rear_occupied = ds.occ_rear,
+        .tof_control_on = ds.tof_control_on,   // режим контролю й охорона з control (phase8, ADR-0005)
+        .tof_guarding = ds.tof_guarding,
     };
     ui_out_t out;
     ui_core_tick(&s_core, &in, &out);

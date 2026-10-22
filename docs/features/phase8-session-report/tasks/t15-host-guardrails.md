@@ -9,8 +9,8 @@ files_hint: ["test/host/check_secrets.sh", "test/host/check_core_headers.sh", "t
 owner: "Агент"
 estimate: "S"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T15 — Додати хостові перевірки: гігієна секретів у git, повний прогін збірки й тестів, захищені файли дозволені лише в межах фази

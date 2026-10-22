@@ -75,9 +75,12 @@ logs/
 .env
 .env.*
 *.pem
+!components/report/certs/root_ca.pem
 *.key
 secrets*.h
 secrets*.json
+# Локальні налаштування мережі звіту (phase8-session-report, ADR-0006): пароль Wi-Fi і сервера
+components/report/report_secrets.h
 
 # ───────── Редактори та ОС ─────────
 .vscode/*

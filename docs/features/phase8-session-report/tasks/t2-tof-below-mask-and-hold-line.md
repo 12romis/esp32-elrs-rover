@@ -9,8 +9,8 @@ files_hint: ["components/tof/tof_core.c", "components/tof/include/tof_core.h", "
 owner: "Агент"
 estimate: "M"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T2 — Додати в tof_core маску датчиків нижче порога й розширити рядок утримання переліком усіх таких датчиків

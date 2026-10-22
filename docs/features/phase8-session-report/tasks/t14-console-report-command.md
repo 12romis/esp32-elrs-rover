@@ -9,8 +9,8 @@ files_hint: ["components/rover_console/console_core.c", "components/rover_consol
 owner: "Агент"
 estimate: "M"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T14 — Додати в консоль команду report та поля status про режим контролю й звіти, з підключенням у main

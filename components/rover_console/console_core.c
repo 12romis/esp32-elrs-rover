@@ -1,6 +1,7 @@
 // Логіка консолі: збирання рядка, розбір команд, права за станом.
 // Без заголовків ESP-IDF і FreeRTOS; дії виконує console_hal.
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 
 #include "console_core.h"
@@ -93,6 +94,7 @@ static console_cmd_t first_word(const char *line, const char **rest)
     if (n == 3 && strncmp(start, "enc", n) == 0) return CONSOLE_CMD_ENC;
     if (n == 3 && strncmp(start, "pid", n) == 0) return CONSOLE_CMD_PID;
     if (n == 3 && strncmp(start, "tof", n) == 0) return CONSOLE_CMD_TOF;
+    if (n == 6 && strncmp(start, "report", n) == 0) return CONSOLE_CMD_REPORT;
     return CONSOLE_CMD_UNKNOWN;
 }
 
@@ -190,7 +192,8 @@ const char *console_help_text(void)
            "  enc [reset] — знімок енкодерів коліс; reset обнуляє лічильники й відстань (у будь-якому стані)\n"
            "  pid [kp|ki|kd|ramp <число> | on | off | save | trace on|off] — регулятор швидкості бортів: стан, "
            "зміна числа, увімкнення (DISARMED), збереження (не під час руху), трасування\n"
-           "  tof [reinit] — далекоміри: стан, відстані, сектори, поріг (у будь-якому стані); reinit повертає відмовивші далекоміри в роботу (лише DISARMED)";
+           "  tof [reinit] — далекоміри: стан, відстані, сектори, поріг (у будь-якому стані); reinit повертає відмовивші далекоміри в роботу (лише DISARMED)\n"
+           "  report    — звіти сесій: черга, режим контролю перешкод, мережа; у DISARMED запускає передачу негайно";
 }
 
 const char *console_msg_unknown(void)
@@ -612,7 +615,8 @@ void console_fmt_ui_denied(char *buf, size_t n, ui_result_t r, app_state_t state
 void console_fmt_ui_status(char *buf, size_t n, bool expander_ok, bool head, bool red, bool green, bool rear_auto,
                            ui_indicator_t indicator, bool buzzer_on, uint32_t remaining_ms)
 {
-    const char *colour = indicator == UI_IND_RED ? "червоний" : (indicator == UI_IND_YELLOW ? "жовтий" : "вимкнений");
+    const char *colour = indicator == UI_IND_RED ? "червоний"
+                       : (indicator == UI_IND_YELLOW ? "жовтий" : (indicator == UI_IND_GREEN ? "зелений" : "вимкнений"));
     snprintf(buf, n, "розширювач: %s; світло: head %s, red %s, green %s; задні ліхтарі: керує %s; індикатор плати: %s; зумер: %s, залишок: %u мс",
              expander_ok ? "доступний" : "недоступний", head ? "ввімкнено" : "вимкнено", red ? "ввімкнено" : "вимкнено",
              green ? "ввімкнено" : "вимкнено", rear_auto ? "рух" : "вручну", colour,
@@ -827,4 +831,115 @@ void console_fmt_pid_denied(char *buf, size_t n, console_pid_form_t form, app_st
     } else {
         snprintf(buf, n, "Стан %s: вмикати й вимикати регулятор можна лише в стані DISARMED.", app_state_name(state));
     }
+}
+
+// ---------- Команда report і поля status (phase8-session-report) ----------
+
+static void cat(char *buf, size_t n, size_t *pos, const char *fmt, ...) __attribute__((format(printf, 4, 5)));
+static void cat(char *buf, size_t n, size_t *pos, const char *fmt, ...)
+{
+    if (*pos + 1 >= n) {
+        return;
+    }
+    va_list ap;
+    va_start(ap, fmt);
+    int w = vsnprintf(buf + *pos, n - *pos, fmt, ap);
+    va_end(ap);
+    if (w < 0) {
+        buf[*pos] = '\0';
+    } else if ((size_t)w >= n - *pos) {
+        *pos = n - 1;
+    } else {
+        *pos += (size_t)w;
+    }
+}
+
+static void fmt_queue(char *buf, size_t n, size_t *pos, const console_report_view_t *v)
+{
+    if (v->queued == 0) {
+        cat(buf, n, pos, "звіти: черга порожня");
+        return;
+    }
+    cat(buf, n, pos, "звіти: у черзі %u:", (unsigned)v->queued);
+    for (uint8_t i = 0; i < v->queued && i < REPORT_Q_SLOTS; i++) {
+        cat(buf, n, pos, "%s сесія %lu (%s)", i ? "," : "", (unsigned long)v->q_seq[i], report_end_reason_text(v->q_reason[i]));
+    }
+}
+
+static void fmt_mode(char *buf, size_t n, size_t *pos, const console_report_view_t *v)
+{
+    if (!v->ctl_on) {
+        cat(buf, n, pos, "контроль перешкод: вимкнено");
+        return;
+    }
+    cat(buf, n, pos, "контроль перешкод: увімкнено%s, %s", v->ctl_default ? " (за замовчуванням, пульт не підтвердив)" : "",
+        v->guarding ? "охороняє" : "не охороняє");
+}
+
+void console_fmt_report(char *buf, size_t n, const console_report_view_t *v)
+{
+    if (buf == NULL || n == 0) {
+        return;
+    }
+    buf[0] = '\0';
+    if (v == NULL) {
+        return;
+    }
+    size_t pos = 0;
+    fmt_queue(buf, n, &pos, v);
+    cat(buf, n, &pos, "\n");
+    fmt_mode(buf, n, &pos, v);
+    cat(buf, n, &pos, "\nмережа: налаштування %s; остання спроба: %s", v->config_ok ? "задано" : "не задано",
+        report_outcome_text(v->last_outcome));
+    if (v->last_outcome != REPORT_OUT_NONE) {
+        cat(buf, n, &pos, " (%lu мс від старту)", (unsigned long)v->last_outcome_ms);
+    }
+    if (!v->acted) {
+        return;
+    }
+    switch (v->gate) {
+    case REPORT_GO:
+        cat(buf, n, &pos, "\nспробу запущено");
+        break;
+    case REPORT_DENY_BUSY:
+        cat(buf, n, &pos, "\nпередача вже триває");
+        break;
+    case REPORT_DENY_EMPTY:
+        cat(buf, n, &pos, "\nнічого надсилати, Wi-Fi не вмикається");
+        break;
+    case REPORT_DENY_NO_CONFIG:
+        cat(buf, n, &pos, "\nналаштування мережі не задано, передача не починається%s%s%s",
+            v->config_problem && v->config_problem[0] ? " (" : "", v->config_problem ? v->config_problem : "",
+            v->config_problem && v->config_problem[0] ? ")" : "");
+        break;
+    case REPORT_DENY_STATE:
+        cat(buf, n, &pos, "\nпередача можлива лише в DISARMED (зараз %s)", app_state_name(v->state));
+        break;
+    }
+}
+
+void console_fmt_tof_control_status(char *buf, size_t n, const console_report_view_t *v)
+{
+    if (buf == NULL || n == 0) {
+        return;
+    }
+    buf[0] = '\0';
+    size_t pos = 0;
+    if (v != NULL) {
+        fmt_mode(buf, n, &pos, v);
+    }
+}
+
+void console_fmt_report_status(char *buf, size_t n, const console_report_view_t *v)
+{
+    if (buf == NULL || n == 0) {
+        return;
+    }
+    buf[0] = '\0';
+    if (v == NULL) {
+        return;
+    }
+    size_t pos = 0;
+    cat(buf, n, &pos, "звіти: у черзі %u, остання спроба: %s, налаштування мережі: %s, радіо: %s", (unsigned)v->queued,
+        report_outcome_text(v->last_outcome), v->config_ok ? "задано" : "не задано", v->busy ? "спроба триває" : "вимкнено");
 }

@@ -8,3 +8,8 @@ CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# phase8-session-report (дозвіл Розробника 2026-10-22, spec A22): Wi-Fi, TLS і MQTT збільшують образ понад 1 МБ → розділ застосунку 1.5 МБ
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+# Стек lwip на core 0 разом із Wi-Fi (документ 02 §6.1, ADR-0003); керування лишається на core 1
+CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y

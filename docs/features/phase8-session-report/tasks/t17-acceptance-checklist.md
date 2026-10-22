@@ -9,8 +9,8 @@ files_hint: ["docs/features/phase8-session-report/acceptance.md"]
 owner: "Розробник"
 estimate: "M"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T17 — Скласти чекліст приймання на залізі для Розробника: CH9, індикатор, список датчиків, доставка, черга, переривання озброєнням, FAILSAFE, замір запису в памʼять

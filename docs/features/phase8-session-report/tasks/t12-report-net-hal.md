@@ -9,8 +9,8 @@ files_hint: ["components/report/report_net_hal.c", "components/report/include/re
 owner: "Агент"
 estimate: "M"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T12 — Створити report_net_hal: підключення Wi-Fi, TLS із закріпленим сертифікатом і обмін MQTT з таймаутом 100 мс на крок

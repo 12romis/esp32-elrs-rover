@@ -450,13 +450,13 @@ static void test_hold_rear_auto_and_double_beep_transitions(void)
     CHECK(!o.red && o.green);                           // назад: лише зелений, як в ARMED
     CHECK(!o.buzzer_on);
     o = tick(&u, 900, APP_STATE_ARMED, -300, -300, true);
-    CHECK(o.head && o.buzzer_on);                       // вихід в ARMED — подвійний біп; фари не чіпає
+    CHECK(o.head && o.buzzer_on);                       // вихід в ARMED — одинарний сигнал 200 мс (коміт bc4aedd); фари не чіпає
     CHECK(o.indicator == UI_IND_OFF);                   // індикатор гасне
     CHECK(!o.red && o.green);
     o = tick(&u, 1000, APP_STATE_ARMED, -300, -300, true);
-    CHECK(!o.buzzer_on);
-    o = tick(&u, 1100, APP_STATE_ARMED, -300, -300, true);
     CHECK(o.buzzer_on);
+    o = tick(&u, 1100, APP_STATE_ARMED, -300, -300, true);
+    CHECK(!o.buzzer_on);
     o = tick(&u, 1200, APP_STATE_ARMED, -300, -300, true);
     CHECK(!o.buzzer_on);
     CHECK(ui_core_remaining_ms(&u, 1200) == 0);
@@ -563,7 +563,7 @@ static void test_double_beep_no_overlap(void)
     o = tick(&u, 700, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
     CHECK(!o.buzzer_on);                                           // біп скінчився, нового не було
     o = tick(&u, 800, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
-    CHECK(!o.buzzer_on);
+    CHECK(o.buzzer_on);                                           // повторний вхід в утримання почав новий подвійний біп (коміт bc4aedd)
 }
 
 static void test_double_beep_replaced_by_disarm_signal(void)
@@ -586,12 +586,12 @@ static void test_double_beep_manual_beep_waits_in_slot(void)
     settle(&u, 0, APP_STATE_DISARMED);
     tick(&u, 200, APP_STATE_ARMED, 0, 0, true);
     tick(&u, 400, APP_STATE_OBSTACLE_HOLD, 0, 0, true);
-    tick(&u, 800, APP_STATE_ARMED, 0, 0, true);                    // вихідний подвійний біп 800…1100
+    tick(&u, 800, APP_STATE_ARMED, 0, 0, true);                    // вихідний одинарний сигнал 800…1000
     bool queued = false;
     CHECK(ui_core_beep(&u, 2000, 500, 850, APP_STATE_ARMED, &queued) == UI_OK && queued);   // чекає в слоті
-    ui_out_t o = tick(&u, 1000, APP_STATE_ARMED, 0, 0, true);
+    ui_out_t o = tick(&u, 900, APP_STATE_ARMED, 0, 0, true);
     CHECK(o.buzzer_on && o.buzzer_hz == HZ);                       // біп не вкорочено
-    o = tick(&u, 1100, APP_STATE_ARMED, 0, 0, true);
+    o = tick(&u, 1000, APP_STATE_ARMED, 0, 0, true);
     CHECK(o.buzzer_on && o.buzzer_hz == 2000);                     // після біпа звучить ручний
 }
 
@@ -734,8 +734,79 @@ static void test_hold_manual_denied(void)
     CHECK(ui_core_beep(&u, 1000, 100, 0, APP_STATE_OBSTACLE_HOLD, NULL) == UI_DENY_STATE);
 }
 
+// ---------- phase8 T4: зелений індикатор за режимом контролю й охороною ----------
+static ui_out_t tick_ctl(ui_core_t *u, uint32_t t, app_state_t s, bool ctl_on, bool guarding)
+{
+    ui_in_t i = in_of(t, s, 0, 0, true);
+    i.tof_control_on = ctl_on;
+    i.tof_guarding = guarding;
+    ui_out_t o;
+    ui_core_tick(u, &i, &o);
+    return o;
+}
+
+static void test_green_indicator_table(void)
+{
+    // AC-05/AC-06/AC-07: усі стани × (режим, охорона)
+    for (int i = 0; i < APP_STATE_COUNT; i++) {
+        for (int ctl = 0; ctl < 2; ctl++) {
+            for (int g = 0; g < 2; g++) {
+                ui_core_t u;
+                ui_core_init(&u, HZ);
+                app_state_t s = ALL[i];
+                ui_out_t o = tick_ctl(&u, 100, s, ctl, g);
+                ui_indicator_t want = UI_IND_OFF;
+                if (s == APP_STATE_FAILSAFE) {
+                    want = UI_IND_RED;
+                } else if (s == APP_STATE_OBSTACLE_HOLD) {
+                    want = UI_IND_YELLOW;
+                } else if ((s == APP_STATE_DISARMED || s == APP_STATE_ARMED) && ctl && g) {
+                    want = UI_IND_GREEN;
+                }
+                CHECK(o.indicator == want);
+            }
+        }
+    }
+}
+
+static void test_green_follows_mode_next_step(void)
+{
+    ui_core_t u;
+    ui_core_init(&u, HZ);
+    settle(&u, 0, APP_STATE_DISARMED);
+    ui_out_t o = tick_ctl(&u, 100, APP_STATE_DISARMED, true, true);
+    CHECK(o.indicator == UI_IND_GREEN);
+    o = tick_ctl(&u, 200, APP_STATE_DISARMED, false, false);          // тумблер вимкнено: гасне на наступному кроці
+    CHECK(o.indicator == UI_IND_OFF);
+    o = tick_ctl(&u, 300, APP_STATE_DISARMED, true, false);           // режим є, охорони немає: не зелений
+    CHECK(o.indicator == UI_IND_OFF);
+    o = tick_ctl(&u, 400, APP_STATE_DISARMED, true, true);
+    CHECK(o.indicator == UI_IND_GREEN);
+    o = tick_ctl(&u, 500, APP_STATE_ARMED, true, true);
+    CHECK(o.indicator == UI_IND_GREEN);
+    o = tick_ctl(&u, 600, APP_STATE_FAILSAFE, true, true);            // червоний сильніший
+    CHECK(o.indicator == UI_IND_RED);
+    // зелений не змінює світло задніх ліхтарів і зумер
+    ui_core_init(&u, HZ);
+    settle(&u, 0, APP_STATE_DISARMED);
+    ui_out_t a = tick_ctl(&u, 100, APP_STATE_DISARMED, false, false);
+    ui_core_init(&u, HZ);
+    settle(&u, 0, APP_STATE_DISARMED);
+    ui_out_t b = tick_ctl(&u, 100, APP_STATE_DISARMED, true, true);
+    CHECK(a.head == b.head && a.red == b.red && a.green == b.green && a.buzzer_on == b.buzzer_on);
+    // розширювач недоступний — індикатор працює
+    ui_in_t in = in_of(200, APP_STATE_DISARMED, 0, 0, false);
+    in.tof_control_on = true;
+    in.tof_guarding = true;
+    ui_out_t o2;
+    ui_core_tick(&u, &in, &o2);
+    CHECK(o2.indicator == UI_IND_GREEN);
+}
+
 int main(void)
 {
+    test_green_indicator_table();
+    test_green_follows_mode_next_step();
     test_permissions();
     test_manual_light();
     test_rear_by_motion();

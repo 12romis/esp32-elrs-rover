@@ -299,3 +299,56 @@ size_t tof_fmt_hold_line(char *buf, size_t n, tof_sector_t sector, uint16_t mm, 
     }
     return pos;
 }
+
+uint8_t tof_below_mask(const tof_view_t *v, tof_sector_t sector)
+{
+    if (v == NULL) {
+        return 0;
+    }
+    uint8_t mask = 0;
+    for (int i = 0; i < TOF_SENSORS; i++) {
+        if (tof_sector_of((tof_id_t)i) != sector) {
+            continue;
+        }
+        if (v->sensor[i].state == TOF_S_OK && v->sensor[i].mm < TOF_OBSTACLE_MM) {
+            mask |= (uint8_t)(1u << i);
+        }
+    }
+    return mask;
+}
+
+// Додає «U7 150 мм, U8 160 мм» для датчиків маски.
+static void append_sensors(char *buf, size_t n, size_t *pos, const tof_view_t *v, uint8_t mask)
+{
+    bool first = true;
+    for (int i = 0; i < TOF_SENSORS; i++) {
+        if ((mask & (1u << i)) == 0) {
+            continue;
+        }
+        append(buf, n, pos, "%s%s %u мм", first ? "" : ", ", tof_sensor_name((tof_id_t)i), (unsigned)v->sensor[i].mm);
+        first = false;
+    }
+}
+
+size_t tof_fmt_hold_sensors(char *buf, size_t n, const tof_view_t *v, bool front_occupied, bool rear_occupied)
+{
+    if (buf == NULL || n == 0) {
+        return 0;
+    }
+    buf[0] = '\0';
+    if (v == NULL) {
+        return 0;
+    }
+    uint8_t front = front_occupied ? tof_below_mask(v, TOF_SECTOR_FRONT) : 0;
+    uint8_t rear = rear_occupied ? tof_below_mask(v, TOF_SECTOR_REAR) : 0;
+    size_t pos = 0;
+    if (front != 0 && rear != 0) {
+        append(buf, n, &pos, "передній: ");
+        append_sensors(buf, n, &pos, v, front);
+        append(buf, n, &pos, "; задній: ");
+        append_sensors(buf, n, &pos, v, rear);
+    } else if (front != 0 || rear != 0) {
+        append_sensors(buf, n, &pos, v, front != 0 ? front : rear);
+    }
+    return pos;
+}

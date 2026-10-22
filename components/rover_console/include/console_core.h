@@ -8,6 +8,8 @@
 
 #include "app_state.h"
 #include "pid_core.h"
+#include "report_core.h"
+#include "report_queue_core.h"
 #include "ui_core.h"
 
 #define CONSOLE_LINE_MAX 64  // максимум символів у рядку команди (без завершального нуля)
@@ -51,7 +53,9 @@ typedef enum {
     CONSOLE_CMD_PID_TRACE, // pid trace on | pid trace off
     // Далекомірі (phase6-tof, spec AC-09, AC-10, AC-11). Хибна форма — CONSOLE_CMD_BAD_ARGS.
     CONSOLE_CMD_TOF,       // показ далекомірів і секторів (усі стани)
-    CONSOLE_CMD_TOF_REINIT // повторна ініціалізація відмовивших далекомірів (лише DISARMED)
+    CONSOLE_CMD_TOF_REINIT, // повторна ініціалізація відмовивших далекомірів (лише DISARMED)
+    // Звіти сесій (phase8-session-report, spec A16, AC-17; contracts/cli.md). Форма лише «report»; будь-який аргумент — EXTRA_ARGS.
+    CONSOLE_CMD_REPORT     // стан черги звітів; у DISARMED запускає спробу передачі негайно
 } console_cmd_t;
 
 void console_init(console_t *c);
@@ -205,3 +209,32 @@ void console_fmt_pid_error(char *buf, size_t n, const console_pid_t *p);
 
 // Пояснення відмови за станом для форми pid (spec AC-15).
 void console_fmt_pid_denied(char *buf, size_t n, console_pid_form_t form, app_state_t state);
+
+// ---------- Команда report і поля status про режим контролю та звіти (phase8-session-report; contracts/cli.md) ----------
+
+// Знімок для виводу: збирає HAL (main) з drive_hal і report_hal. Паролів і SSID у ньому немає за побудовою: лише ознаки.
+typedef struct {
+    app_state_t state;
+    // режим контролю перешкод
+    bool ctl_on;               // режим ввімкнений
+    bool ctl_default;          // значення за замовчуванням (немає кадру пульта чи зв'язку)
+    bool guarding;             // хоч один сектор охороняється
+    // звіти
+    uint8_t queued;            // у черзі (0…REPORT_Q_SLOTS)
+    uint32_t q_seq[REPORT_Q_SLOTS];
+    session_end_t q_reason[REPORT_Q_SLOTS];
+    bool config_ok;            // налаштування мережі задано
+    const char *config_problem;   // що саме не задано, без значень (NULL, якщо задано)
+    bool busy;                 // спроба триває
+    report_outcome_t last_outcome;
+    uint32_t last_outcome_ms;
+    // дія команди
+    bool acted;                // команда `report` просила дію: gate — рішення report_hal
+    report_gate_t gate;
+} console_report_view_t;
+
+// Відповідь `report`: рядки стану, режиму, мережі, потім результат дії (порядок фіксований, cli.md).
+void console_fmt_report(char *buf, size_t n, const console_report_view_t *v);
+// Рядки status.
+void console_fmt_tof_control_status(char *buf, size_t n, const console_report_view_t *v);
+void console_fmt_report_status(char *buf, size_t n, const console_report_view_t *v);

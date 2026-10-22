@@ -9,8 +9,8 @@ files_hint: ["components/ui/ui_core.c", "components/ui/include/ui_core.h", "comp
 owner: "Агент"
 estimate: "M"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T4 — Додати в ui зелений індикатор за режимом контролю й охороною з пріоритетом червоний > жовтий > зелений

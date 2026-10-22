@@ -16,6 +16,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "pid_hal.h"
+#include "session_hal.h"
 #include "telemetry_hal.h"
 #include "tof_hal.h"
 
@@ -226,7 +227,7 @@ static void log_stop(const drive_ctl_out_t *o, const drive_ctl_in_t *in, uint32_
 }
 
 // Події кроку для журналу: по одному рядку на подію, не на такт (contracts/cli.md, «Журнал без команд»).
-static void log_events(const drive_ctl_out_t *o, const drive_ctl_in_t *in, uint32_t now)
+static void log_events(const drive_ctl_out_t *o, const drive_ctl_in_t *in, uint32_t now, bool occ_front, bool occ_rear)
 {
     if (o->events & DRIVE_EVT_REMOTE_APPEARED) {
         ESP_LOGI(TAG, "з'явився пульт — стендовий режим закінчено; консольні arm і drive вимкнено до перезапуску плати");
@@ -254,16 +255,38 @@ static void log_events(const drive_ctl_out_t *o, const drive_ctl_in_t *in, uint3
         char line[320];   // рядок входу в утримання з мітками ≈ 280 байтів (UTF-8)
         tof_fmt_hold_line(line, sizeof(line), (tof_sector_t)o->hold_sector, o->hold_mm, o->hold_nearest, o->hold_has_first,
                           o->hold_first_ms, now);
-        ESP_LOGW(TAG, "OBSTACLE_HOLD: %s", line);
+        // Усі датчики зайнятих секторів, що бачать перешкоду, з відстанями (phase8 A4): один рядок на вхід в утримання.
+        char sensors[120];
+        if (tof_fmt_hold_sensors(sensors, sizeof(sensors), &in->tof, occ_front, occ_rear) > 0) {
+            ESP_LOGW(TAG, "OBSTACLE_HOLD: %s; датчики нижче порога: %s", line, sensors);
+        } else {
+            ESP_LOGW(TAG, "OBSTACLE_HOLD: %s", line);
+        }
     }
     if (o->events & DRIVE_EVT_HOLD_EXIT) {
-        ESP_LOGI(TAG, "сектор вільний — повернення в ARMED");
+        if (o->tof_control_on) {
+            ESP_LOGI(TAG, "сектор вільний — повернення в ARMED");
+        } else {
+            ESP_LOGI(TAG, "контроль перешкод вимкнено — повернення в ARMED");   // перешкода може лишатися перед ровером
+        }
     }
     if (o->events & DRIVE_EVT_TOF_STALE) {
         ESP_LOGW(TAG, "знімок далекомірів застарів або не отримано — сектори не охороняються, захист від зіткнень вимкнено");
     }
     if (o->events & DRIVE_EVT_TOF_RESTORED) {
         ESP_LOGI(TAG, "знімок далекомірів знову оновлюється — захист від зіткнень відновлено");
+    }
+    if (o->events & DRIVE_EVT_TOF_CONTROL_OFF) {
+        ESP_LOGW(TAG, "контроль перешкод вимкнено (CH9): сектори не зупиняють ровер");
+    }
+    if (o->events & DRIVE_EVT_TOF_CONTROL_ON) {
+        ESP_LOGI(TAG, "контроль перешкод ввімкнено (CH9)");
+    }
+    if (o->events & DRIVE_EVT_PROTECTION_LOST) {
+        ESP_LOGW(TAG, "захист від зіткнень не діє: жоден далекомір не охороняє");
+    }
+    if (o->events & DRIVE_EVT_PROTECTION_RESTORED) {
+        ESP_LOGI(TAG, "захист відновлено");
     }
     if (o->events & DRIVE_EVT_ENC_RESTORED) {
         ESP_LOGI(TAG, "вимірювання швидкості коліс відновилось — регулятор бортів з нуля");
@@ -316,6 +339,7 @@ static void control_task(void *arg)
         battery_get_snapshot(&in.battery);
         crsf_snapshot_get(&in.rc);   // без приймача знімок порожній: стендовий режим (ADR-0001)
         tof_snapshot_get(&in.tof);    // далекоміри (phase6-tof, ADR-0001): валідність і вік перевіряє drive_ctl_step
+        in.tof_control_on = crsf_tof_control_effective(&in.rc, ctl.link_alive);   // CH9 (phase8, ADR-0005): без кадру й зв'язку — увімкнено
         enc_input(&in.enc);           // регулятор (phase5-pid, ADR-0001): швидкість коліс зі знімка encoders
         pid_hal_get(&in.pid, &in.pid_saving);
         uint32_t now = now_ms();  // час беремо ПІСЛЯ зчитування черги й знімка: вік не стає відʼємним
@@ -399,6 +423,9 @@ static void control_task(void *arg)
         s_status.fsx = fsx;
         s_status.occ_front = ctl.occ_front;
         s_status.occ_rear = ctl.occ_rear;
+        s_status.tof_control_on = out.tof_control_on;
+        s_status.tof_guarding = out.tof_guarding;
+        s_status.tof_control_default = !(in.rc.have_frame && ctl.link_alive);
         if (out.stop != DRIVE_STOP_NONE && !(out.stop == DRIVE_STOP_DISARM && !app_state_is_driving(in.state))) {
             s_status.last_stop = out.stop;  // зупинка справжня: запам'ятати для status (AC-12)
             s_status.last_stop_min_mv = out.min_mv;
@@ -425,7 +452,32 @@ static void control_task(void *arg)
             xSemaphoreGive(s_reply_sem);
         }
         log_stop(&out, &in, now);  // лог — після вимкнення виходів і запиту стану
-        log_events(&out, &in, now);
+        log_events(&out, &in, now, ctl.occ_front, ctl.occ_rear);
+
+        // Статистика сесії (phase8, ADR-0001): наприкінці кроку, без блокувань; стан — той, який бачив цей крок.
+        {
+            session_hal_in_t sin = {
+                .now_ms = now,
+                .state = in.state,
+                .failsafe_cause = in.failsafe_cause,
+                .battery = in.battery,
+                .tof_control_on = out.tof_control_on,
+                .hold_enter = (out.events & DRIVE_EVT_HOLD_ENTER) != 0,
+                .hold_mm = out.hold_mm,
+                .hold_nearest = out.hold_nearest,
+                .left_permille = out.left_permille,
+                .right_permille = out.right_permille,
+                .cmd_left = out.pid_view[0].mix,
+                .cmd_right = out.pid_view[1].mix,
+            };
+            if (sin.hold_enter) {
+                sin.hold_below_mask = (uint8_t)((ctl.occ_front ? tof_below_mask(&in.tof, TOF_SECTOR_FRONT) : 0u) |
+                                                (ctl.occ_rear ? tof_below_mask(&in.tof, TOF_SECTOR_REAR) : 0u));
+            }
+            enc_state_t enc_snap;
+            encoders_state_get(&enc_snap);
+            session_hal_step(&sin, &enc_snap);
+        }
 
         int64_t step_us = esp_timer_get_time() - step_t0_us;   // тривалість кроку без очікування наступного періоду
         telemetry_step_record(step_us > 0 ? (uint32_t)step_us : 0u, CONTROL_PERIOD_MS * 1000u);

@@ -55,6 +55,7 @@ feature_size: M
 | `speed.left_avg_rpm`, `speed.right_avg_rpm` | number | середній модуль швидкості борту за час руху, об/хв | борт без доступного енкодера або `moving_ms` = 0 | spec A10 |
 | `speed.left_peak_rpm`, `speed.right_peak_rpm` | number | пікова швидкість за сесію, об/хв | те саме | spec A10 |
 | `speed.imbalance_pct` | number | (лівий − правий) / півсума, %, плюс = лівий швидший | немає інтервалів прямої їзди чи борт без енкодера | spec A10 |
+| `encoders.left`, `encoders.right` | boolean | у борту хоч раз за сесію був доступний енкодер; `false` пояснює `null` у швидкостях цього борту й те, що пробіг рахувався за одним бортом (рев'ю phase8, знахідка 4; додано після рев'ю) | ніколи | spec A9, AC-21 |
 | `fw.version` | string | версія з даних образу | ніколи (мінімум «unknown») | spec A11 |
 | `fw.git` | string | git-хеш образу | ніколи (мінімум «unknown») | spec A11 |
 | `fw.dirty` | boolean | збірка з незафіксованими змінами; поле відсутнє, якщо збірка його не дає | поле опускається | spec A11 |
@@ -82,7 +83,8 @@ feature_size: M
   "moving_ms": 142000,
   "speed": {"left_avg_rpm": 88.4, "left_peak_rpm": 141.0, "right_avg_rpm": 84.1,
             "right_peak_rpm": 138.5, "imbalance_pct": 5.0},
-  "fw": {"version": "x.y.z", "git": "abcdef0", "idf": "v6.1", "mac": "aabbccddeeff"}
+  "encoders": {"left": true, "right": true},
+  "fw": {"version": "x.y.z", "git": "abcdef0", "idf": "v6.1"}, "mac": "aabbccddeeff"
 }
 ```
 
@@ -98,6 +100,7 @@ feature_size: M
   "tof_control_off_ms": 0, "distance_cm": null, "moving_ms": 0,
   "speed": {"left_avg_rpm": null, "left_peak_rpm": null, "right_avg_rpm": null,
             "right_peak_rpm": null, "imbalance_pct": null},
-  "fw": {"version": "x.y.z", "git": "abcdef0", "idf": "v6.1", "mac": "aabbccddeeff"}
+  "encoders": {"left": false, "right": false},
+  "fw": {"version": "x.y.z", "git": "abcdef0", "idf": "v6.1"}, "mac": "aabbccddeeff"
 }
 ```

@@ -9,8 +9,8 @@ files_hint: ["components/report/report_queue_core.c", "components/report/include
 owner: "Агент"
 estimate: "M"
 context_budget: "S"
-status: "todo"
-step: ""
+status: "done"
+step: "COMMIT"
 ---
 
 # T9 — Створити report_queue_core: кільце з двох слотів, порядок передачі, вихід зі спроби при першій невдачі й правила дозволу передачі за станом

@@ -106,6 +106,22 @@ static void do_tof(console_cmd_t cmd)
     fflush(stdout);
 }
 
+// Команда report (phase8-session-report): стан черги, режим контролю, мережа; у DISARMED — спроба негайно.
+static void do_report(void)
+{
+    if (s_ops->report_view == NULL) {
+        say("Звіти сесій не підключені.");
+        return;
+    }
+    console_report_view_t v;
+    s_ops->report_view(&v, true);
+    static char text[560];   // чотири рядки ≈ 450 байтів (UTF-8)
+    console_fmt_report(text, sizeof(text), &v);
+    put_lines(text);
+    printf("\r\n");
+    fflush(stdout);
+}
+
 static void do_status(void)
 {
     uint64_t up_s = (uint64_t)(esp_timer_get_time() / 1000000);
@@ -137,6 +153,15 @@ static void do_status(void)
         char line[320];  // найдовший рядок ≈ 270 байтів (UTF-8)
         console_fmt_ui_status(line, sizeof(line), us.expander_ok, us.head, us.red, us.green, us.rear_auto,
                               us.indicator, us.buzzer_on, us.remaining_ms);
+        printf("%s\r\n", line);
+    }
+    if (s_ops->report_view) {
+        console_report_view_t rv;
+        s_ops->report_view(&rv, false);
+        char line[320];   // «контроль перешкод …» ≈ 130 байтів, «звіти: …» ≈ 200 байтів (UTF-8)
+        console_fmt_tof_control_status(line, sizeof(line), &rv);
+        printf("%s\r\n", line);
+        console_fmt_report_status(line, sizeof(line), &rv);
         printf("%s\r\n", line);
     }
     if (s_ops->rc_status) {
@@ -308,6 +333,9 @@ static void execute(const char *line)
     case CONSOLE_CMD_TOF:
     case CONSOLE_CMD_TOF_REINIT:
         do_tof(cmd);
+        break;
+    case CONSOLE_CMD_REPORT:
+        do_report();
         break;
     case CONSOLE_CMD_HELP:
         say(console_help_text());
