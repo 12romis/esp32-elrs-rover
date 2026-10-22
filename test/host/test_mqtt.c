@@ -179,8 +179,8 @@ static void test_password_only_in_connect(void)
 static void test_host_normalize(void)
 {
     char out[64];
-    CHECK(mqtt_core_host_normalize("mqtt.romis.cloud", out, sizeof(out)) && strcmp(out, "mqtt.romis.cloud") == 0);
-    CHECK(mqtt_core_host_normalize("mqtts://mqtt.romis.cloud", out, sizeof(out)) && strcmp(out, "mqtt.romis.cloud") == 0);
+    CHECK(mqtt_core_host_normalize("mqtt.example.org", out, sizeof(out)) && strcmp(out, "mqtt.example.org") == 0);
+    CHECK(mqtt_core_host_normalize("mqtts://mqtt.example.org", out, sizeof(out)) && strcmp(out, "mqtt.example.org") == 0);
     CHECK(mqtt_core_host_normalize("ssl://h.example:8883/", out, sizeof(out)) && strcmp(out, "h.example") == 0);
     CHECK(mqtt_core_host_normalize("  tls://h.example/path", out, sizeof(out)) && strcmp(out, "h.example") == 0);
     CHECK(mqtt_core_host_normalize("192.168.0.5", out, sizeof(out)) && strcmp(out, "192.168.0.5") == 0);
