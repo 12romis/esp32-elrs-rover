@@ -241,7 +241,16 @@ void ui_core_tick(ui_core_t *u, const ui_in_t *in, ui_out_t *out)
             o.green = o.green && phase_on;
         }
     }
-    o.indicator = in->state == APP_STATE_FAILSAFE ? UI_IND_RED : (in->state == APP_STATE_OBSTACLE_HOLD ? UI_IND_YELLOW : UI_IND_OFF);
+    // Пріоритет: червоний (FAILSAFE) > жовтий (OBSTACLE_HOLD) > зелений (DISARMED/ARMED, режим увімкнено й охорона є) > погашений.
+    if (in->state == APP_STATE_FAILSAFE) {
+        o.indicator = UI_IND_RED;
+    } else if (in->state == APP_STATE_OBSTACLE_HOLD) {
+        o.indicator = UI_IND_YELLOW;
+    } else if ((in->state == APP_STATE_DISARMED || in->state == APP_STATE_ARMED) && in->tof_control_on && in->tof_guarding) {
+        o.indicator = UI_IND_GREEN;
+    } else {
+        o.indicator = UI_IND_OFF;
+    }
     bool on = u->buz.active && sound_on(u, in->now_ms);
     o.buzzer_on = on;
     o.buzzer_hz = on ? u->buz.hz : 0;

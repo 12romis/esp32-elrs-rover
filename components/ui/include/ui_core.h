@@ -33,7 +33,7 @@ typedef enum {
     UI_DENY_RANGE        // beep поза діапазоном зумера
 } ui_result_t;
 
-typedef enum { UI_IND_OFF, UI_IND_RED, UI_IND_YELLOW } ui_indicator_t;   // жовтий — OBSTACLE_HOLD (phase7-telemetry A8)
+typedef enum { UI_IND_OFF, UI_IND_RED, UI_IND_YELLOW, UI_IND_GREEN } ui_indicator_t;   // жовтий — OBSTACLE_HOLD (phase7 A8); зелений — контроль перешкод охороняє (phase8 A3)
 typedef enum { UI_REAR_MANUAL, UI_REAR_AUTO } ui_rear_mode_t;
 
 // Дозволи (єдина таблиця; console_core її викликає).
@@ -49,6 +49,8 @@ typedef struct {
     bool expander_ok;         // розширювач доступний
     bool front_occupied;      // передній сектор зайнятий (прапорці control; блимання лише в OBSTACLE_HOLD)
     bool rear_occupied;       // задній сектор зайнятий
+    bool tof_control_on;      // режим контролю перешкод ввімкнений (CH9, phase8)
+    bool tof_guarding;        // принаймні один сектор реально охороняється (є працюючий далекомір і свіжий знімок)
 } ui_in_t;
 
 typedef struct {

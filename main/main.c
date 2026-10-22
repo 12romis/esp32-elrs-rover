@@ -13,6 +13,8 @@
 #include "encoders_hal.h"
 #include "ioexp_hal.h"
 #include "pid_hal.h"
+#include "report_hal.h"
+#include "session_hal.h"
 #include "esp_log.h"
 #include "storage_hal.h"
 #include "telemetry_hal.h"
@@ -130,6 +132,37 @@ static size_t rc_status(char *buf, size_t n)
     return crsf_fmt_status(buf, n, &v);
 }
 
+// Знімок звітів сесій і режиму контролю для `report` та `status` (phase8). act — команда просить спробу негайно.
+static void report_view(console_report_view_t *v, bool act)
+{
+    memset(v, 0, sizeof(*v));
+    drive_status_t ds;
+    drive_hal_status(&ds);
+    report_status_t rs;
+    report_hal_status(&rs);
+    v->state = app_state_get();
+    v->ctl_on = ds.tof_control_on;
+    v->ctl_default = ds.tof_control_default;
+    v->guarding = ds.tof_guarding;
+    v->queued = report_q_count(&rs.queue);
+    for (uint8_t i = 0; i < v->queued; i++) {
+        report_q_entry_t e;
+        if (report_q_get(&rs.queue, i, &e)) {
+            v->q_seq[i] = e.seq;
+            v->q_reason[i] = e.reason;
+        }
+    }
+    v->config_ok = rs.config_ok;
+    v->config_problem = rs.config_ok ? NULL : report_hal_config_problem();
+    v->busy = rs.busy;
+    v->last_outcome = rs.last_outcome;
+    v->last_outcome_ms = rs.last_outcome_ms;
+    if (act) {
+        v->acted = true;
+        v->gate = report_hal_attempt_now();
+    }
+}
+
 static const console_ops_t s_console_ops = {
     .storage_status = storage_status_report,
     .request_hang = watchdog_request_hang,
@@ -152,6 +185,7 @@ static const console_ops_t s_console_ops = {
     .pid_trace = pid_hal_trace_enable,
     .tof_show = tof_show_text,
     .tof_reinit = tof_reinit_text,
+    .report_view = report_view,
 };
 
 void app_main(void)
@@ -182,6 +216,10 @@ void app_main(void)
     }
     esp_err_t con = console_start(&s_console_ops);
     esp_err_t bat = battery_start();
+    // Черга підсумків сесії (phase8, ADR-0001) — до control, який наприкінці кожного кроку веде статистику. Збій лише вимикає звіти.
+    if (session_hal_init() != ESP_OK) {
+        ESP_LOGW(TAG, "черга підсумків сесії не створена — звіти сесій не збираються, ровер працює далі");
+    }
     // control стартує до storage_init, тож disarm працює і в BOOT, якщо сховище не піднялося.
     esp_err_t ctl = drv == ESP_OK ? drive_start() : drv;
     // Приймач пульта (ADR-0001): після control, щоб знімок читався з першого такту. Збій UART не зупиняє старт: без
@@ -212,6 +250,10 @@ void app_main(void)
         char sides[200];
         drive_pid_boards_text(set.mode, avail, sides, sizeof(sides));
         ESP_LOGI(TAG, "регулятор за бортами: %s", sides);
+    }
+    // Звіти сесій (phase8, ADR-0003, ADR-0004): черга з NVS і задача report на core 0; після сховища. Збій лише вимикає звіти.
+    if (report_start() != ESP_OK) {
+        ESP_LOGW(TAG, "звіти сесій не стартували — ровер працює без звітів");
     }
     if (pid_trace_start() != ESP_OK) {
         ESP_LOGW(TAG, "трасування регулятора недоступне — решта працює");

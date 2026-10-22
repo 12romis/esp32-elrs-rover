@@ -325,6 +325,34 @@ static void test_switch(void)
     CHECK(crsf_switch_arm(1792));
 }
 
+static void test_tof_control_switch(void)
+{
+    // CH9: вище середини — «контроль увімкнено» (spec A1); 992 — «вимкнено» (канал без призначеного тумблера)
+    CHECK(CRSF_IDX_TOF_CONTROL == 8);
+    CHECK(!crsf_tof_control_on(172));
+    CHECK(!crsf_tof_control_on(992));
+    CHECK(crsf_tof_control_on(993));
+    CHECK(crsf_tof_control_on(1811));
+    crsf_snapshot_t s;
+    memset(&s, 0, sizeof(s));
+    for (int i = 0; i < CRSF_CHANNELS; i++) s.ch[i] = 992;
+    // кадру ще не було — за замовчуванням увімкнено
+    s.have_frame = false;
+    CHECK(crsf_tof_control_effective(&s, true));
+    CHECK(crsf_tof_control_effective(&s, false));
+    // кадр є, зв'язок живий — слухаємо канал
+    s.have_frame = true;
+    s.ch[CRSF_IDX_TOF_CONTROL] = 992;
+    CHECK(!crsf_tof_control_effective(&s, true));
+    s.ch[CRSF_IDX_TOF_CONTROL] = 1792;
+    CHECK(crsf_tof_control_effective(&s, true));
+    s.ch[CRSF_IDX_TOF_CONTROL] = 172;
+    CHECK(!crsf_tof_control_effective(&s, true));
+    // зв'язок втрачено — знову за замовчуванням (увімкнено), хоч останнє значення було «вимкнено»
+    CHECK(crsf_tof_control_effective(&s, false));
+    CHECK(crsf_tof_control_effective(NULL, true));
+}
+
 static void test_edge(void)
 {
     crsf_switch_t base = CRSF_SW_UNKNOWN;
@@ -511,6 +539,7 @@ int main(void)
     test_noise_stream();
     test_axis_deadband();
     test_switch();
+    test_tof_control_switch();
     test_edge();
     test_intent();
     test_calib_signs();

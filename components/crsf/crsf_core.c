@@ -138,6 +138,19 @@ bool crsf_switch_arm(uint16_t raw)
     return raw > CRSF_SWITCH_ARM_ABOVE;
 }
 
+bool crsf_tof_control_on(uint16_t raw)
+{
+    return raw > CRSF_RAW_CENTER;
+}
+
+bool crsf_tof_control_effective(const crsf_snapshot_t *s, bool link_alive)
+{
+    if (s == NULL || !s->have_frame || !link_alive) {
+        return true;
+    }
+    return crsf_tof_control_on(s->ch[CRSF_IDX_TOF_CONTROL]);
+}
+
 void crsf_intent(const crsf_snapshot_t *s, crsf_intent_t *out)
 {
     if (!s->have_frame) {

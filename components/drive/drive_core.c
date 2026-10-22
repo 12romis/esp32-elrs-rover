@@ -86,6 +86,10 @@ void drive_ctl_init(drive_ctl_t *c)
     c->enc_intervals = 0;
     c->enc_t_us = 0;
     c->enc_stale = false;
+    c->tof_ctl_seen = false;
+    c->tof_ctl_prev = true;
+    c->tof_data_seen = false;
+    c->prot_lost = false;
     pid_trace_acc_reset(&c->trace);
 }
 
@@ -383,8 +387,30 @@ void drive_ctl_step(drive_ctl_t *c, const drive_ctl_in_t *in, drive_ctl_out_t *o
     // не охороняються й не зайняті, подія один раз (spec AC-06, AC-07).
     bool driving = app_state_is_driving(in->state);
     bool tof_ok = in->tof.valid && (uint32_t)(in->now_ms - in->tof.t_ms) <= TOF_STALE_MS;
-    c->occ_front = tof_ok && in->tof.sector[TOF_SECTOR_FRONT].occupied;
-    c->occ_rear = tof_ok && in->tof.sector[TOF_SECTOR_REAR].occupied;
+    // Режим контролю (phase8, ADR-0005): вимкнений — сектори не вважаються зайнятими, тож обмеження тяги й утримання не діють,
+    // а OBSTACLE_HOLD виходить в ARMED за тією самою умовою «обидва сектори вільні». Інваріанти п. 7 цього не торкаються.
+    c->occ_front = tof_ok && in->tof_control_on && in->tof.sector[TOF_SECTOR_FRONT].occupied;
+    c->occ_rear = tof_ok && in->tof_control_on && in->tof.sector[TOF_SECTOR_REAR].occupied;
+    o->tof_control_on = in->tof_control_on;
+    bool prot_now = tof_ok && in->tof.protection;
+    o->tof_guarding = in->tof_control_on && prot_now;
+    if (c->tof_ctl_seen && c->tof_ctl_prev != in->tof_control_on) {
+        o->events |= in->tof_control_on ? DRIVE_EVT_TOF_CONTROL_ON : DRIVE_EVT_TOF_CONTROL_OFF;
+    }
+    c->tof_ctl_seen = true;
+    c->tof_ctl_prev = in->tof_control_on;
+    if (in->tof.valid) {
+        c->tof_data_seen = true;
+    }
+    if (in->state == APP_STATE_DISARMED || in->state == APP_STATE_ARMED || in->state == APP_STATE_OBSTACLE_HOLD) {
+        if (in->tof_control_on && c->tof_data_seen && !prot_now && !c->prot_lost) {
+            c->prot_lost = true;
+            o->events |= DRIVE_EVT_PROTECTION_LOST;
+        } else if (in->tof_control_on && prot_now && c->prot_lost) {
+            c->prot_lost = false;
+            o->events |= DRIVE_EVT_PROTECTION_RESTORED;
+        }
+    }
     if (!driving || (!c->occ_front && !c->occ_rear)) {
         c->clamp_reported = false;   // сектор звільнився чи рух закінчився: наступне обрізання поясниться знову
     }

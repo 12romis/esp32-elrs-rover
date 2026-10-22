@@ -704,8 +704,188 @@ static void test_tof_in_help_and_drive_hold(void)
     CHECK(console_parse("drive 2 0", APP_STATE_OBSTACLE_HOLD) == CONSOLE_CMD_BAD_ARGS);   // хибні аргументи, як і раніше
 }
 
+// ---------- phase8 T14: команда report, поля status про режим контролю й звіти ----------
+
+static console_report_view_t rview(app_state_t st)
+{
+    console_report_view_t v;
+    memset(&v, 0, sizeof(v));
+    v.state = st;
+    v.ctl_on = true;
+    v.ctl_default = false;
+    v.guarding = true;
+    v.config_ok = true;
+    v.last_outcome = REPORT_OUT_NONE;
+    v.gate = REPORT_GO;
+    return v;
+}
+
+static void test_report_parse(void)
+{
+    // показ — у всіх сімох станах; передача — рішення report_hal, а не парсера
+    for (int s = 0; s < APP_STATE_COUNT; s++) {
+        CHECK(console_parse("report", (app_state_t)s) == CONSOLE_CMD_REPORT);
+        CHECK(console_parse("  report  ", (app_state_t)s) == CONSOLE_CMD_REPORT);
+        CHECK(console_parse("report now", (app_state_t)s) == CONSOLE_CMD_EXTRA_ARGS);       // будь-який аргумент
+        CHECK(console_parse("report 1", (app_state_t)s) == CONSOLE_CMD_EXTRA_ARGS);
+        CHECK(console_parse("Report", (app_state_t)s) == CONSOLE_CMD_UNKNOWN);               // регістр має значення
+    }
+    CHECK(console_identify("report") == CONSOLE_CMD_REPORT);
+    CHECK(strstr(console_help_text(), "report") != NULL);
+}
+
+static void test_report_fmt_queue_lines(void)
+{
+    char buf[400];
+    console_report_view_t v = rview(APP_STATE_DISARMED);
+    v.queued = 0;
+    v.acted = true;
+    v.gate = REPORT_DENY_EMPTY;
+    console_fmt_report(buf, sizeof(buf), &v);
+    CHECK(strstr(buf, "черга порожня") != NULL && strstr(buf, "нічого надсилати") != NULL);
+    v.queued = 2;
+    v.q_seq[0] = 41;
+    v.q_reason[0] = SESSION_END_DISARM;
+    v.q_seq[1] = 42;
+    v.q_reason[1] = SESSION_END_LINK_LOST;
+    v.gate = REPORT_GO;
+    v.acted = true;
+    console_fmt_report(buf, sizeof(buf), &v);
+    CHECK(strstr(buf, "у черзі 2") != NULL && strstr(buf, "41") != NULL && strstr(buf, "42") != NULL);
+    CHECK(strstr(buf, "роззброєння") != NULL && strstr(buf, "втрата зв'язку") != NULL);
+    CHECK(strstr(buf, "спробу запущено") != NULL);
+    // порядок рядків: черга, режим, мережа, результат
+    const char *q = strstr(buf, "звіти");
+    const char *m = strstr(buf, "контроль перешкод");
+    const char *n = strstr(buf, "мережа");
+    const char *r = strstr(buf, "спробу запущено");
+    CHECK(q && m && n && r && q < m && m < n && n < r);
+}
+
+static void test_report_fmt_gate_results(void)
+{
+    char buf[400];
+    console_report_view_t v = rview(APP_STATE_DISARMED);
+    v.queued = 1;
+    v.q_seq[0] = 7;
+    v.acted = true;
+    v.gate = REPORT_DENY_BUSY;
+    console_fmt_report(buf, sizeof(buf), &v);
+    CHECK(strstr(buf, "передача вже триває") != NULL && strstr(buf, "спробу запущено") == NULL);
+    v.gate = REPORT_DENY_NO_CONFIG;
+    v.config_ok = false;
+    v.config_problem = "немає файлу report_secrets.h";
+    console_fmt_report(buf, sizeof(buf), &v);
+    CHECK(strstr(buf, "налаштування мережі не задано, передача не починається") != NULL);
+    CHECK(strstr(buf, "немає файлу report_secrets.h") != NULL);
+    // AC-17: ARMED, OBSTACLE_HOLD, FAILSAFE (і BOOT, SELFTEST, FAULT) — стан показано, передача лише в DISARMED
+    const app_state_t deny[] = {APP_STATE_ARMED, APP_STATE_OBSTACLE_HOLD, APP_STATE_FAILSAFE, APP_STATE_BOOT, APP_STATE_SELFTEST,
+                                APP_STATE_FAULT};
+    for (unsigned i = 0; i < sizeof(deny) / sizeof(deny[0]); i++) {
+        v = rview(deny[i]);
+        v.queued = 2;
+        v.q_seq[0] = 1;
+        v.q_seq[1] = 2;
+        v.acted = true;
+        v.gate = REPORT_DENY_STATE;
+        console_fmt_report(buf, sizeof(buf), &v);
+        CHECK(strstr(buf, "у черзі 2") != NULL);
+        CHECK(strstr(buf, "лише в DISARMED") != NULL && strstr(buf, app_state_name(deny[i])) != NULL);
+        CHECK(strstr(buf, "спробу запущено") == NULL);
+    }
+}
+
+static void test_report_fmt_outcomes_and_mode(void)
+{
+    char buf[400];
+    console_report_view_t v = rview(APP_STATE_DISARMED);
+    v.last_outcome = REPORT_OUT_CERT;
+    v.last_outcome_ms = 123456;
+    console_fmt_report(buf, sizeof(buf), &v);
+    CHECK(strstr(buf, "сертифікат") != NULL && strstr(buf, "123456") != NULL);
+    v.last_outcome = REPORT_OUT_NONE;
+    console_fmt_report(buf, sizeof(buf), &v);
+    CHECK(strstr(buf, "спроб не було") != NULL);
+    // режим контролю: AC-04 — значення за замовчуванням названо
+    v.ctl_on = true;
+    v.ctl_default = true;
+    console_fmt_report(buf, sizeof(buf), &v);
+    CHECK(strstr(buf, "увімкнено") != NULL && strstr(buf, "за замовчуванням") != NULL);
+    v.ctl_on = false;
+    v.ctl_default = false;
+    console_fmt_report(buf, sizeof(buf), &v);
+    CHECK(strstr(buf, "вимкнено") != NULL && strstr(buf, "за замовчуванням") == NULL);
+    // налаштування мережі
+    v.config_ok = true;
+    console_fmt_report(buf, sizeof(buf), &v);
+    CHECK(strstr(buf, "налаштування задано") != NULL);
+    v.config_ok = false;
+    console_fmt_report(buf, sizeof(buf), &v);
+    CHECK(strstr(buf, "налаштування не задано") != NULL);
+}
+
+static void test_status_lines(void)
+{
+    char buf[300];
+    console_report_view_t v = rview(APP_STATE_ARMED);
+    v.ctl_on = true;
+    v.ctl_default = true;
+    v.guarding = true;
+    console_fmt_tof_control_status(buf, sizeof(buf), &v);
+    CHECK(strstr(buf, "контроль перешкод: увімкнено") != NULL && strstr(buf, "за замовчуванням, пульт не підтвердив") != NULL);
+    CHECK(strstr(buf, "охороняє") != NULL && strstr(buf, "не охороняє") == NULL);
+    v.guarding = false;
+    console_fmt_tof_control_status(buf, sizeof(buf), &v);
+    CHECK(strstr(buf, "не охороняє") != NULL);
+    v.ctl_on = false;
+    v.ctl_default = false;
+    console_fmt_tof_control_status(buf, sizeof(buf), &v);
+    CHECK(strstr(buf, "вимкнено") != NULL);
+    v = rview(APP_STATE_DISARMED);
+    v.queued = 1;
+    v.busy = true;
+    v.last_outcome = REPORT_OUT_NO_NETWORK;
+    console_fmt_report_status(buf, sizeof(buf), &v);
+    CHECK(strstr(buf, "звіти: у черзі 1") != NULL && strstr(buf, "спроба триває") != NULL && strstr(buf, "немає мережі") != NULL);
+    CHECK(strstr(buf, "налаштування мережі: задано") != NULL);
+    v.busy = false;
+    v.config_ok = false;
+    console_fmt_report_status(buf, sizeof(buf), &v);
+    CHECK(strstr(buf, "радіо: вимкнено") != NULL && strstr(buf, "не задано") != NULL);
+}
+
+static void test_indicator_green_in_status(void)
+{
+    char buf[400];
+    console_fmt_ui_status(buf, sizeof(buf), true, false, false, false, true, UI_IND_GREEN, false, 0);
+    CHECK(strstr(buf, "індикатор плати: зелений") != NULL);
+    console_fmt_ui_status(buf, sizeof(buf), true, false, false, false, true, UI_IND_OFF, false, 0);
+    CHECK(strstr(buf, "індикатор плати: вимкнений") != NULL);
+}
+
+static void test_report_small_buffer(void)
+{
+    char tiny[24];
+    console_report_view_t v = rview(APP_STATE_DISARMED);
+    v.queued = 2;
+    console_fmt_report(tiny, sizeof(tiny), &v);
+    CHECK(strlen(tiny) < sizeof(tiny));
+    console_fmt_report_status(tiny, sizeof(tiny), &v);
+    CHECK(strlen(tiny) < sizeof(tiny));
+    console_fmt_tof_control_status(tiny, sizeof(tiny), &v);
+    CHECK(strlen(tiny) < sizeof(tiny));
+    console_fmt_report(NULL, 0, &v);
+}
+
 int main(void)
 {
+    test_report_parse();
+    test_report_fmt_queue_lines();
+    test_report_fmt_gate_results();
+    test_report_fmt_outcomes_and_mode();
+    test_status_lines();
+    test_indicator_green_in_status();
+    test_report_small_buffer();
     test_enc_command();
     test_enc_error_reason();
     test_arm_ok_names_bench();

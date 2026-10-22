@@ -120,5 +120,13 @@ size_t tof_fmt_show(char *buf, size_t n, const tof_view_t *v, bool stale);
 size_t tof_fmt_hold_line(char *buf, size_t n, tof_sector_t sector, uint16_t mm, int nearest, bool has_first, uint32_t first_ms,
                          uint32_t now_ms);
 
+// Маска (біти 1u << tof_id_t) справних датчиків сектора з відстанню строго менше TOF_OBSTACLE_MM (phase8 spec A4).
+// Датчики не в стані OK (відмова, ще не запущені, поза діапазоном) у маску не входять.
+uint8_t tof_below_mask(const tof_view_t *v, tof_sector_t sector);
+
+// Перелік датчиків, що бачать перешкоду, для рядка входу в утримання: «U7 150 мм, U8 160 мм». Називає датчики лише зайнятих
+// секторів; коли зайняті обидва — кожен перелік має позначку сектора. Порожній рядок (0), якщо називати нікого.
+size_t tof_fmt_hold_sensors(char *buf, size_t n, const tof_view_t *v, bool front_occupied, bool rear_occupied);
+
 // Датчик належить сектору: передній — три передні, задній — U10.
 tof_sector_t tof_sector_of(tof_id_t id);

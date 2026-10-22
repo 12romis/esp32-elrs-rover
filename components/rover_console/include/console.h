@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "console_core.h"
 #include "esp_err.h"
 #include "pid_core.h"
 #include "ui_core.h"
@@ -80,6 +81,9 @@ typedef struct {
     // повертають довжину. NULL — далекоміри не підключені.
     size_t (*tof_show)(char *buf, size_t n);
     size_t (*tof_reinit)(char *buf, size_t n);
+    // Звіти сесій і режим контролю перешкод (phase8): знімок для виводу; act = true — команда `report` просить спробу
+    // передачі негайно (рішення за станом, чергою й налаштуваннями — у report_hal). NULL — звітів немає.
+    void (*report_view)(console_report_view_t *v, bool act);
 } console_ops_t;
 
 // Встановлює драйвер USB-Serial-JTAG і стартує задачу console (core 0, пріоритет 1).

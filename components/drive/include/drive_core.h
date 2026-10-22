@@ -101,7 +101,12 @@ typedef struct {
     bool enc_stale;                // знімок застарів (spec AC-12b): подія журналу — один раз
     // --- phase6-tof (ADR-0001) ---
     bool tof_stale;                // знімок далекомірів застарів чи не отримано: подія журналу — один раз
-    bool occ_front, occ_rear;      // сектори зайняті в цьому такті (знімок свіжий і сектор зайнятий)
+    bool occ_front, occ_rear;      // сектори зайняті в цьому такті (знімок свіжий, режим контролю ввімкнений, сектор зайнятий)
+    // --- phase8-session-report (ADR-0005) ---
+    bool tof_ctl_seen;             // режим контролю вже спостерігався: перший крок події не дає
+    bool tof_ctl_prev;             // режим контролю на попередньому кроці
+    bool tof_data_seen;            // знімок далекомірів хоч раз був дійсний (до того «втрати охорони» немає)
+    bool prot_lost;                // про втрату охорони вже повідомлено, доки вона не відновилась
     bool clamp_reported;           // про обрізання тяги вже пояснено, доки команди лишаються обрізаними (spec AC-15: один раз)
     pid_trace_acc_t trace;         // накопичення кадру трасування (ADR-0003)
 } drive_ctl_t;
@@ -123,6 +128,10 @@ typedef struct {
 #define DRIVE_EVT_HOLD_EXIT (1u << 10)        // запит ARMED з OBSTACLE_HOLD: сектори вільні
 #define DRIVE_EVT_TOF_STALE (1u << 11)        // знімок далекомірів застарів чи не отримано: сектори не охороняються
 #define DRIVE_EVT_TOF_RESTORED (1u << 12)     // знімок далекомірів знову оновлюється
+#define DRIVE_EVT_TOF_CONTROL_ON (1u << 13)   // режим контролю перешкод увімкнено (CH9; один на зміну)
+#define DRIVE_EVT_TOF_CONTROL_OFF (1u << 14)  // режим контролю перешкод вимкнено
+#define DRIVE_EVT_PROTECTION_LOST (1u << 15)  // режим увімкнено, але жоден далекомір не охороняє (відмови чи знімок застарів)
+#define DRIVE_EVT_PROTECTION_RESTORED (1u << 16)  // охорона повернулась
 
 // Стабільний звʼязок для виходу з FAILSAFE: безперервно живий від першого кадру після втрати (spec AC-08).
 #define DRIVE_LINK_STABLE_MS 1000
@@ -166,6 +175,8 @@ typedef struct {
     bool pid_saving;             // триває запис набору в памʼять плати: озброєння відхиляється (spec AC-15)
     // --- phase6-tof ---
     tof_view_t tof;              // знімок далекомірів; нульова ініціалізація (valid == false) — захисту немає, сектори вільні
+    // --- phase8-session-report ---
+    bool tof_control_on;         // режим контролю перешкод (CH9, crsf_tof_control_effective); false — сектори не вважаються зайнятими
 } drive_ctl_in_t;
 
 typedef struct {
@@ -183,6 +194,9 @@ typedef struct {
     app_failsafe_cause_t failsafe_cause;  // причина, якщо state_request == FAILSAFE (ADR-0002)
     drive_block_t arm_block;     // перша невиконана умова, якщо events & DRIVE_EVT_ARM_REFUSED
     uint32_t events;             // DRIVE_EVT_* для журналу
+    // --- phase8-session-report ---
+    bool tof_control_on;         // режим контролю перешкод на цьому кроці (для ui, session і status)
+    bool tof_guarding;           // режим ввімкнений і принаймні один сектор реально охороняється (свіжий знімок)
     // --- phase5-pid ---
     pid_side_view_t pid_view[2]; // стан бортів для показу `pid` і кадру трасування
     bool tof_clamped;            // у такті прийнятої команди руху тягу в бік зайнятого сектору обрізано (spec AC-15)

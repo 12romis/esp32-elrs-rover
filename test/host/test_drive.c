@@ -96,6 +96,7 @@ static drive_ctl_in_t in_for(app_state_t st, uint32_t now, battery_snapshot_t b,
     drive_ctl_in_t in = {0};
     in.now_ms = now; in.state = st; in.battery = b;
     in.req.kind = k; in.req.throttle = thr; in.req.steer = steer;
+    in.tof_control_on = true;   // phase8: режим контролю перешкод ввімкнено (як за замовчуванням); тести фаз 0–7 без змін
     return in;
 }
 
@@ -1910,9 +1911,146 @@ static void test_tof_clamped_explained_once_per_episode(void)
     CHECK(o.accepted && o.tof_clamped);                                                                   // новий епізод — знову
 }
 
+// ---------- phase8 T3: режим контролю перешкод (CH9) ----------
+
+static drive_ctl_out_t gtc(drive_ctl_t *c, app_state_t st, uint32_t now, tof_view_t v, bool control_on, drive_req_kind_t k,
+                           float thr, float steer)
+{
+    drive_ctl_out_t o;
+    drive_ctl_in_t in = in_for(st, now, snap(8000, now), k, thr, steer);
+    in.tof = v;
+    in.tof_control_on = control_on;
+    drive_ctl_step(c, &in, &o);
+    return o;
+}
+
+static void test_control_off_allows_forward(void)
+{
+    // AC-01: контроль вимкнено — зайнятий передній сектор не обрізає тягу й не веде в OBSTACLE_HOLD
+    drive_ctl_t c;
+    drive_ctl_init(&c);
+    drive_ctl_out_t o = gtc(&c, APP_STATE_ARMED, 1000, tv(1000, true, false), false, DRIVE_REQ_DRIVE, 0.5f, 0.0f);
+    CHECK(o.accepted && o.left_permille == 500 && o.right_permille == 500 && !o.tof_clamped);
+    CHECK(!o.has_state_request && !(o.events & DRIVE_EVT_HOLD_ENTER));
+    o = gtc(&c, APP_STATE_ARMED, 1020, tv(1020, true, false), false, DRIVE_REQ_NONE, 0, 0);
+    CHECK(!o.has_state_request && o.left_permille == 500);
+    // той самий знімок із увімкненим контролем: утримання
+    drive_ctl_init(&c);
+    gtc(&c, APP_STATE_ARMED, 3000, tv(3000, false, false), true, DRIVE_REQ_DRIVE, 0.5f, 0.0f);
+    o = gtc(&c, APP_STATE_ARMED, 3020, tv(3020, true, false), true, DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_OBSTACLE_HOLD && (o.events & DRIVE_EVT_HOLD_ENTER));
+}
+
+static void test_control_off_in_hold_returns_to_armed(void)
+{
+    // AC-02: вимкнення в OBSTACLE_HOLD — запит ARMED на тому ж кроці, хоч перешкода лишається
+    drive_ctl_t c;
+    drive_ctl_init(&c);
+    drive_ctl_out_t o = gtc(&c, APP_STATE_OBSTACLE_HOLD, 1000, tv(1000, true, false), true, DRIVE_REQ_NONE, 0, 0);
+    CHECK(!o.has_state_request);                                       // контроль увімкнено: утримання триває
+    o = gtc(&c, APP_STATE_OBSTACLE_HOLD, 1020, tv(1020, true, false), false, DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_ARMED && (o.events & DRIVE_EVT_HOLD_EXIT));
+    // рух уперед у ARMED тепер дозволений
+    o = gtc(&c, APP_STATE_ARMED, 1040, tv(1040, true, false), false, DRIVE_REQ_DRIVE, 0.5f, 0.0f);
+    CHECK(o.accepted && o.left_permille == 500 && !o.has_state_request);
+}
+
+static void test_control_off_keeps_safety_invariants(void)
+{
+    // AC-03: напруга нижча за поріг — FAILSAFE як при ввімкненому контролі
+    drive_ctl_t c;
+    drive_ctl_init(&c);
+    drive_ctl_out_t o;
+    drive_ctl_in_t in = in_for(APP_STATE_ARMED, 1000, snap(5900, 1000), DRIVE_REQ_NONE, 0, 0);
+    in.tof = tv(1000, true, false);
+    in.tof_control_on = false;
+    drive_ctl_step(&c, &in, &o);
+    check_off(o.out);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_FAILSAFE && o.failsafe_cause == APP_FS_VOLTAGE);
+    // втрата зв'язку понад 500 мс з пультом при вимкненому контролі
+    uint32_t t = ready_disarmed(&c, 5000);
+    uint32_t seq = 10;
+    for (int i = 0; i < 3; i++, t += 20) {
+        in = in_for(APP_STATE_ARMED, t, snap(8000, t), DRIVE_REQ_NONE, 0, 0);
+        in.rc = rc_raw(t, seq++, NEUT, 1700, SW_ARM);
+        in.tof = tv(t, true, false);
+        in.tof_control_on = false;
+        drive_ctl_step(&c, &in, &o);
+    }
+    uint32_t last = t - 20;
+    in = in_for(APP_STATE_ARMED, last + 501, snap(8000, last + 501), DRIVE_REQ_NONE, 0, 0);
+    in.rc = rc_raw(last, seq - 1, NEUT, 1700, SW_ARM);
+    in.tof = tv(last + 501, true, false);
+    in.tof_control_on = false;
+    drive_ctl_step(&c, &in, &o);
+    CHECK(o.has_state_request && o.state_request == APP_STATE_FAILSAFE && o.failsafe_cause == APP_FS_LINK_LOST);
+    check_off(o.out);
+}
+
+static void test_control_mode_events(void)
+{
+    drive_ctl_t c;
+    drive_ctl_init(&c);
+    drive_ctl_out_t o = gtc(&c, APP_STATE_DISARMED, 1000, tv(1000, false, false), true, DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.tof_control_on && !(o.events & (DRIVE_EVT_TOF_CONTROL_ON | DRIVE_EVT_TOF_CONTROL_OFF)));   // перший крок без події
+    o = gtc(&c, APP_STATE_DISARMED, 1020, tv(1020, false, false), false, DRIVE_REQ_NONE, 0, 0);
+    CHECK(!o.tof_control_on && (o.events & DRIVE_EVT_TOF_CONTROL_OFF) && !(o.events & DRIVE_EVT_TOF_CONTROL_ON));
+    o = gtc(&c, APP_STATE_DISARMED, 1040, tv(1040, false, false), false, DRIVE_REQ_NONE, 0, 0);
+    CHECK(!(o.events & (DRIVE_EVT_TOF_CONTROL_ON | DRIVE_EVT_TOF_CONTROL_OFF)));                       // один раз на зміну
+    CHECK(!o.tof_guarding);                                                                            // вимкнений режим не охороняє
+    o = gtc(&c, APP_STATE_DISARMED, 1060, tv(1060, false, false), true, DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.tof_control_on && (o.events & DRIVE_EVT_TOF_CONTROL_ON) && o.tof_guarding);
+    // дребезг: кожна зміна — одна подія
+    int n = 0;
+    for (int i = 0; i < 6; i++) {
+        o = gtc(&c, APP_STATE_DISARMED, 1080 + 20 * (uint32_t)i, tv(1080 + 20 * (uint32_t)i, false, false), i % 2 == 0 ? false : true,
+                DRIVE_REQ_NONE, 0, 0);
+        n += (o.events & (DRIVE_EVT_TOF_CONTROL_ON | DRIVE_EVT_TOF_CONTROL_OFF)) ? 1 : 0;
+    }
+    CHECK(n == 6);
+}
+
+static void test_protection_events(void)
+{
+    drive_ctl_t c;
+    drive_ctl_init(&c);
+    drive_ctl_out_t o = gtc(&c, APP_STATE_DISARMED, 1000, tv(1000, false, false), true, DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.tof_guarding && !(o.events & (DRIVE_EVT_PROTECTION_LOST | DRIVE_EVT_PROTECTION_RESTORED)));
+    // усі далекоміри відмовили: protection = false → одна подія «втрата»
+    tof_view_t v = tv(1020, false, false);
+    v.protection = false;
+    o = gtc(&c, APP_STATE_DISARMED, 1020, v, true, DRIVE_REQ_NONE, 0, 0);
+    CHECK(!o.tof_guarding && (o.events & DRIVE_EVT_PROTECTION_LOST));
+    v = tv(1040, false, false);
+    v.protection = false;
+    o = gtc(&c, APP_STATE_DISARMED, 1040, v, true, DRIVE_REQ_NONE, 0, 0);
+    CHECK(!(o.events & (DRIVE_EVT_PROTECTION_LOST | DRIVE_EVT_PROTECTION_RESTORED)));                  // не повторює
+    o = gtc(&c, APP_STATE_DISARMED, 1060, tv(1060, false, false), true, DRIVE_REQ_NONE, 0, 0);
+    CHECK(o.tof_guarding && (o.events & DRIVE_EVT_PROTECTION_RESTORED));
+    // знімок застарів у ARMED під час руху: втрата охорони
+    o = gtc(&c, APP_STATE_ARMED, 1400, tv(1060, false, false), true, DRIVE_REQ_NONE, 0, 0);
+    CHECK(!o.tof_guarding && (o.events & DRIVE_EVT_PROTECTION_LOST));
+    // вимкнення режиму саме по собі не є «втратою охорони»
+    drive_ctl_init(&c);
+    gtc(&c, APP_STATE_ARMED, 2000, tv(2000, false, false), true, DRIVE_REQ_NONE, 0, 0);
+    o = gtc(&c, APP_STATE_ARMED, 2020, tv(2020, false, false), false, DRIVE_REQ_NONE, 0, 0);
+    CHECK(!(o.events & DRIVE_EVT_PROTECTION_LOST));
+    // знімка ще не було (датчики ініціалізуються): події «втрата» немає
+    drive_ctl_init(&c);
+    tof_view_t none;
+    memset(&none, 0, sizeof(none));
+    o = gtc(&c, APP_STATE_DISARMED, 500, none, true, DRIVE_REQ_NONE, 0, 0);
+    CHECK(!o.tof_guarding && !(o.events & DRIVE_EVT_PROTECTION_LOST));
+}
+
 int main(void)
 {
     test_pid_boards_text();
+    test_control_off_allows_forward();
+    test_control_off_in_hold_returns_to_armed();
+    test_control_off_keeps_safety_invariants();
+    test_control_mode_events();
+    test_protection_events();
     test_pid_remote_regulated();
     test_pid_remote_equals_bench();
     test_pid_reset_on_remote_stops();

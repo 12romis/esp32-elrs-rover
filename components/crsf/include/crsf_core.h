@@ -24,6 +24,7 @@
 #define CRSF_IDX_STEER 0
 #define CRSF_IDX_THROTTLE 1
 #define CRSF_IDX_ARM 4
+#define CRSF_IDX_TOF_CONTROL 8            // CH9: тумблер режиму контролю перешкод (phase8-session-report)
 
 typedef struct {
     uint32_t rc_ok;       // прийняті кадри каналів
@@ -74,6 +75,10 @@ float crsf_axis(uint16_t raw, int sign);
 // Чи лежить вісь у мертвій зоні (критерій нейтралі для озброєння, spec AC-04).
 bool crsf_axis_neutral(uint16_t raw);
 bool crsf_switch_arm(uint16_t raw);
+// Режим контролю перешкод: CH9 вище середини — увімкнено (spec A1); рівно 992 (канал без тумблера) — вимкнено.
+bool crsf_tof_control_on(uint16_t raw);
+// Дійсний режим: поки кадру не було або зв'язок не живий — увімкнено (небезпечніше помилково вимкнений захист).
+bool crsf_tof_control_effective(const crsf_snapshot_t *s, bool link_alive);
 
 typedef enum { CRSF_SW_UNKNOWN, CRSF_SW_DISARM, CRSF_SW_ARM } crsf_switch_t;
 

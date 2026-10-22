@@ -69,6 +69,13 @@ expect "check_protected ловить зміну sdkconfig.defaults" nz "$HERE/ch
 ( cd "$TMP/repo" && git checkout -q -- . && git checkout -q -b feat && echo more >>sdkconfig.defaults && git commit -qam "змінено захищений" )
 expect "check_protected ловить закомічену зміну відносно main" nz "$HERE/check_protected.sh" "$TMP/repo"
 expect "ALLOW_PROTECTED=1 дозволяє" 0 env ALLOW_PROTECTED=1 "$HERE/check_protected.sh" "$TMP/repo"
+mkdir -p "$TMP/repo/.vscode" "$TMP/repo/kicad-rover"
+echo x >"$TMP/repo/.vscode/settings.json"
+expect "ALLOW_PROTECTED=1 не дозволяє .vscode/" nz env ALLOW_PROTECTED=1 "$HERE/check_protected.sh" "$TMP/repo"
+rm -rf "$TMP/repo/.vscode"
+echo y >"$TMP/repo/kicad-rover/a.net"
+expect "ALLOW_PROTECTED=1 не дозволяє kicad-rover/" nz env ALLOW_PROTECTED=1 "$HERE/check_protected.sh" "$TMP/repo"
+rm -rf "$TMP/repo/kicad-rover"
 
 # --- check_calib.sh (phase4-encoders T7, AC-11): константи енкодерів мають рядок у docs/measured.md з тим самим значенням
 mkdir -p "$TMP/cgood/components/encoders/include" "$TMP/cgood/docs" "$TMP/cbad1/components/encoders/include" "$TMP/cbad1/docs" \
@@ -123,6 +130,35 @@ expect "check_power_limit ловить другу константу межі в
 expect "check_power_limit ловить відсутню межу" nz "$HERE/check_power_limit.sh" "$TMP/pbad3"
 expect "check_power_limit мовчить на межі 950" 0 "$HERE/check_power_limit.sh" "$TMP/pgood"
 expect "check_power_limit мовчить на репозиторії" 0 "$HERE/check_power_limit.sh"
+
+# --- check_secrets.sh (phase8-session-report T15, AC-23, AC-24): гігієна секретів
+mkdir -p "$TMP/sec/components/report"
+git init -q -b main "$TMP/sec"
+printf 'components/report/report_secrets.h\n' >"$TMP/sec/.gitignore"
+printf '#define REPORT_WIFI_SSID ""\n#define REPORT_WIFI_PASSWORD ""\n#define REPORT_MQTT_HOST ""\n#define REPORT_MQTT_PORT 8883\n#define REPORT_MQTT_USER ""\n#define REPORT_MQTT_PASSWORD ""\n' >"$TMP/sec/components/report/report_secrets.example.h"
+( cd "$TMP/sec" && git config user.email t@t && git config user.name t && git add -A && git commit -qm init )
+expect "check_secrets мовчить на чистому репозиторії" 0 "$HERE/check_secrets.sh" "$TMP/sec"
+printf '#define REPORT_WIFI_PASSWORD "SuperTajne123"\n#define REPORT_WIFI_SSID "Home"\n' >"$TMP/sec/components/report/report_secrets.h"
+expect "check_secrets мовчить, коли секрети лише локально й ігноруються" 0 "$HERE/check_secrets.sh" "$TMP/sec"
+printf 'пароль SuperTajne123 у нотатках\n' >"$TMP/sec/notes.md"
+( cd "$TMP/sec" && git add notes.md && git commit -qm notes )
+expect "check_secrets ловить значення секрету у відстежуваному файлі" nz "$HERE/check_secrets.sh" "$TMP/sec"
+( cd "$TMP/sec" && git rm -qf notes.md && git commit -qm rm )
+( cd "$TMP/sec" && git add -f components/report/report_secrets.h && git commit -qm leak )
+expect "check_secrets ловить відстежуваний report_secrets.h" nz "$HERE/check_secrets.sh" "$TMP/sec"
+( cd "$TMP/sec" && git rm -qf --cached components/report/report_secrets.h && git commit -qm unleak )
+printf '' >"$TMP/sec/.gitignore"
+( cd "$TMP/sec" && git add -A && git commit -qm noignore )
+expect "check_secrets ловить відсутній .gitignore для report_secrets.h" nz "$HERE/check_secrets.sh" "$TMP/sec"
+printf 'components/report/report_secrets.h\n' >"$TMP/sec/.gitignore"
+printf '#define REPORT_WIFI_SSID "Home"\n' >"$TMP/sec/components/report/report_secrets.example.h"
+( cd "$TMP/sec" && git add -A && git commit -qm filled )
+expect "check_secrets ловить заповнений шаблон" nz "$HERE/check_secrets.sh" "$TMP/sec"
+printf '#define REPORT_WIFI_SSID ""\n' >"$TMP/sec/components/report/report_secrets.example.h"
+mkdir -p "$TMP/sec/components/report/certs"
+printf -- '-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n' >"$TMP/sec/components/report/certs/k.pem"
+expect "check_secrets ловить приватний ключ у certs" nz "$HERE/check_secrets.sh" "$TMP/sec"
+expect "check_secrets мовчить на репозиторії" 0 "$HERE/check_secrets.sh"
 
 [ $fail -eq 0 ] && echo "selftest_tools: усе гаразд" || echo "selftest_tools: ЄСТЬ ПОМИЛКИ"
 exit $fail

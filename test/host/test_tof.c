@@ -486,6 +486,85 @@ static void test_single_spike_clears_below(void)
     CHECK(v.sector[TOF_SECTOR_FRONT].has_below && v.sector[TOF_SECTOR_FRONT].below_ms == t);
 }
 
+// ---------- phase8 T2: маска датчиків нижче порога й їх перелік у рядку утримання ----------
+
+static tof_view_t mkview(const tof_state_t st[TOF_SENSORS], const uint16_t mm[TOF_SENSORS])
+{
+    tof_view_t v;
+    memset(&v, 0, sizeof(v));
+    v.valid = true;
+    for (int i = 0; i < TOF_SENSORS; i++) {
+        v.sensor[i].state = st[i];
+        v.sensor[i].mm = mm[i];
+    }
+    return v;
+}
+
+static void test_below_mask(void)
+{
+    const tof_state_t ok[TOF_SENSORS] = {TOF_S_OK, TOF_S_OK, TOF_S_OK, TOF_S_OK};
+    // два з трьох передніх нижче порога (AC-08)
+    uint16_t mm1[TOF_SENSORS] = {150, 160, 500, 100};
+    tof_view_t v = mkview(ok, mm1);
+    CHECK(tof_below_mask(&v, TOF_SECTOR_FRONT) == ((1u << TOF_LEFT_FRONT) | (1u << TOF_FRONT)));
+    CHECK(tof_below_mask(&v, TOF_SECTOR_REAR) == (1u << TOF_REAR));
+    // відстань рівно на порозі — не нижче порога
+    uint16_t mm2[TOF_SENSORS] = {THR, THR - 1, THR + 1, THR};
+    v = mkview(ok, mm2);
+    CHECK(tof_below_mask(&v, TOF_SECTOR_FRONT) == (1u << TOF_FRONT));
+    CHECK(tof_below_mask(&v, TOF_SECTOR_REAR) == 0);
+    // датчик у відмові, ще не запущений чи поза діапазоном не потрапляє в маску (AC-09)
+    const tof_state_t st3[TOF_SENSORS] = {TOF_S_FAILED, TOF_S_OK, TOF_S_OUT, TOF_S_INIT};
+    uint16_t mm3[TOF_SENSORS] = {50, 170, 50, 50};
+    v = mkview(st3, mm3);
+    CHECK(tof_below_mask(&v, TOF_SECTOR_FRONT) == (1u << TOF_FRONT));
+    CHECK(tof_below_mask(&v, TOF_SECTOR_REAR) == 0);
+    // жоден
+    uint16_t mm4[TOF_SENSORS] = {1000, 1000, 1000, 1000};
+    v = mkview(ok, mm4);
+    CHECK(tof_below_mask(&v, TOF_SECTOR_FRONT) == 0);
+    CHECK(tof_below_mask(NULL, TOF_SECTOR_FRONT) == 0);
+}
+
+static void test_hold_sensors_line(void)
+{
+    const tof_state_t ok[TOF_SENSORS] = {TOF_S_OK, TOF_S_OK, TOF_S_OK, TOF_S_OK};
+    char buf[200];
+    // два передні: обидва з відстанню, третього немає (AC-08)
+    uint16_t mm1[TOF_SENSORS] = {150, 160, 500, 100};
+    tof_view_t v = mkview(ok, mm1);
+    size_t n = tof_fmt_hold_sensors(buf, sizeof(buf), &v, true, false);
+    CHECK(n > 0 && n == strlen(buf));
+    CHECK(strstr(buf, "U7") != NULL && strstr(buf, "150") != NULL);
+    CHECK(strstr(buf, "U8") != NULL && strstr(buf, "160") != NULL);
+    CHECK(strstr(buf, "U9") == NULL);
+    CHECK(strstr(buf, "U10") == NULL);
+    // несправний передній не називається, справний називається (AC-09)
+    const tof_state_t st2[TOF_SENSORS] = {TOF_S_FAILED, TOF_S_OK, TOF_S_OK, TOF_S_OK};
+    uint16_t mm2[TOF_SENSORS] = {50, 120, 500, 500};
+    v = mkview(st2, mm2);
+    n = tof_fmt_hold_sensors(buf, sizeof(buf), &v, true, false);
+    CHECK(n > 0 && strstr(buf, "U8") != NULL && strstr(buf, "120") != NULL);
+    CHECK(strstr(buf, "U7") == NULL);
+    // задній сектор: один датчик
+    uint16_t mm3[TOF_SENSORS] = {500, 500, 500, 100};
+    v = mkview(ok, mm3);
+    n = tof_fmt_hold_sensors(buf, sizeof(buf), &v, false, true);
+    CHECK(n > 0 && strstr(buf, "U10") != NULL && strstr(buf, "100") != NULL && strstr(buf, "U8") == NULL);
+    // обидва сектори: датчики обох із позначкою сектора
+    uint16_t mm4[TOF_SENSORS] = {500, 150, 500, 100};
+    v = mkview(ok, mm4);
+    n = tof_fmt_hold_sensors(buf, sizeof(buf), &v, true, true);
+    CHECK(strstr(buf, "перед") != NULL && strstr(buf, "зад") != NULL);
+    CHECK(strstr(buf, "U8") != NULL && strstr(buf, "U10") != NULL);
+    // жоден сектор не зайнятий або порожня маска — порожній рядок
+    CHECK(tof_fmt_hold_sensors(buf, sizeof(buf), &v, false, false) == 0 && buf[0] == '\0');
+    CHECK(tof_fmt_hold_sensors(NULL, 0, &v, true, false) == 0);
+    char tiny[8];
+    n = tof_fmt_hold_sensors(tiny, sizeof(tiny), &v, true, true);
+    CHECK(n < sizeof(tiny) && strlen(tiny) == n);
+}
+
 int main(void)
 {
     test_constants();
@@ -509,5 +588,7 @@ int main(void)
     test_hold_line();
     test_first_below_timestamp();
     test_single_spike_clears_below();
+    test_below_mask();
+    test_hold_sensors_line();
     return test_summary();
 }
