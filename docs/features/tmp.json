@@ -1,0 +1,31 @@
+{
+  "process_id": "4333",
+  "finished_at": null,
+  "author": {
+    "username": "i.romanenko",
+    "name": "i.romanenko",
+    "department": null
+  },
+  "assignee": "t.kozik",
+  "title": "Погодити ЗП AlcoHub Cosmopolit/АлкоХаб Космополіт Квітень 2026 р.",
+  "description": "<p>Погодити ЗП AlcoHub Cosmopolit/АлкоХаб Космополіт Квітень 2026 р.</p> <p><a href=\"https://financeman.test.zakaz.ua/ua_erp_salary_test/#e1cib/data/Документ.НачислениеЗарплаты?ref=97d8cca010c48af311f16e0e65756254\"target=\"_blank\">Нарахування зарплати та внесків ZUSL-000008 від 22.06.2026</a></p>",  
+  "status": {
+    "id": "todo",
+    "title": "До виконання",
+    "transitions": [
+      {
+        "id": "completed",
+        "title": "Виконано"
+      },
+      {
+        "id": "in_progress",
+        "title": "В роботі"
+      },
+      {
+        "id": "rejected",
+        "title": "Відхилено"
+      }
+    ]
+  },
+  "labels": []
+}

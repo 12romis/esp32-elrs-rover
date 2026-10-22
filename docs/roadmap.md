@@ -59,6 +59,7 @@ updated_at: "2026-10-21"
 | 5 | `phase5-pid` — борт тримає задану швидкість під навантаженням, коефіцієнти міняються з консолі | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 5 — PID» | S | shipped — [spec](features/phase5-pid/spec.md) |
 | 6 | `phase6-tof` — ровер зупиняється перед перешкодою, дозволяє здати назад, переживає відмову сенсора | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 6 — далекоміри й протизіткнення» | S | shipped — [spec](features/phase6-tof/spec.md) |
 | 7 | `phase7-telemetry` — пульт бачить напругу батареї, OBSTACLE_HOLD чути й видно (подвійний біп, жовтий індикатор, блимання фар і ліхтарів), є README, блок-схема й заповнений чекліст | `docs/02-FIRMWARE-CONTEXT.md` §7, «Фаза 7 — телеметрія, інтеграція, документація»; запит Розробника 2026-10-21 (індикація OBSTACLE_HOLD) | S | shipped — [spec](features/phase7-telemetry/spec.md) |
+| 8 | `phase8-session-report` — тумблер CH9 вмикає/вимикає контроль перешкод (зеленуватий індикатор), консоль називає всі датчики, що бачать перешкоду; після роззброєння ровер надсилає звіт сесії (JSON) через Wi-Fi і MQTT, Wi-Fi вимикається одразу, при невдачі лишаються дві останні сесії | запит Розробника 2026-10-22 | M | spec'd — [spec](features/phase8-session-report/spec.md) |
 
 ## Not yet specified
 
@@ -109,6 +110,7 @@ flowchart LR
   s5["5 · pid"]
   s6["6 · tof"]
   s7["7 · telemetry"]
+  s8["8 · session report"]
   P0 -->|sdkconfig N16R8| s0
   P0 -->|sdkconfig N16R8| s1
   P3 -->|VBAT cutoff| s1
@@ -134,6 +136,10 @@ flowchart LR
   s3 -->|CRSF telemetry back| s7
   s5 -->|loop timing in telemetry| s7
   s6 -->|integration| s7
+  s7 -->|indicator, hold line| s8
+  s3 -->|CH9 switch| s8
+  s5 -->|board speeds| s8
+  s6 -->|ToF off switch, sensors| s8
 ```
 
 ## Execution path
@@ -149,7 +155,8 @@ flowchart LR
 | 5 | 4 | 4: `components/encoders/` | 5 |
 | 6 | 5 | 5: `components/pid/` | 7 |
 | 7 | 6 | 6: `components/tof/` | 7 |
-| 8 | 7 | 7: `components/telemetry/`, `README.md` | — |
+| 8 | 7 | 7: `components/telemetry/`, `README.md` | 8 |
+| 9 | 8 | 8: нові компоненти сесії й звіту (назви визначить design), `components/ui/`, `components/tof/`, `components/drive/`, `components/rover_console/` | — |
 
 ## Shipped
 
